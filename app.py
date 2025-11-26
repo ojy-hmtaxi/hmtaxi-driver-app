@@ -577,9 +577,23 @@ def work_end_step2():
         # 운행시작 정보 조회 (필요 시 하루 전 데이터 사용)
         work_start_info, start_lookup_date, start_month_name, start_day = get_work_start_info_with_fallback(employee_id, current_date)
         
+        # 운행일 결정: 운행시작일시의 날짜 사용 (없으면 현재 날짜)
+        work_start_datetime = None
+        operation_date = current_date.strftime('%Y/%m/%d')  # 기본값: 현재 날짜
+        
+        if work_start_info and work_start_info.get('work_date'):
+            work_start_datetime = work_start_info.get('work_date')
+            # 운행시작일시에서 날짜 부분만 추출
+            try:
+                start_dt = datetime.strptime(work_start_datetime, '%Y/%m/%d %H:%M:%S')
+                operation_date = start_dt.strftime('%Y/%m/%d')
+            except Exception as e:
+                print(f"Error parsing work_start_datetime for operation_date: {e}")
+                # 파싱 실패 시 기본값 사용
+        
         # sales_DB_2026에 저장할 데이터 구성
         sales_data = {
-            '운행일': current_date.strftime('%Y/%m/%d'),
+            '운행일': operation_date,  # 운행시작일시의 날짜 사용
             '근무유형': step1_data.get('work_type', ''),
             '사번': str(employee_id),
             '운전기사': user.get('name', '') if user else '',
@@ -604,11 +618,9 @@ def work_end_step2():
                     sales_data['차종'] = record.get('차종', '').strip()
                     break
         
-        work_start_datetime = None
         work_duration = None
         
-        if work_start_info and work_start_info.get('work_date'):
-            work_start_datetime = work_start_info.get('work_date')
+        if work_start_datetime:
             
             # 근무 시간 계산 (운행시작일시 ~ 운행종료일시)
             try:
