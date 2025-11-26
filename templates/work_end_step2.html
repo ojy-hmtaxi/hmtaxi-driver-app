@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}근무종료 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="work-prepare-container">
+    <div class="work-prepare-header">
+        <a href="{{ url_for('work_end') }}" class="back-button">‹</a>
+        <h1>근무종료</h1>
+    </div>
+    
+    <div class="work-prepare-box">
+        <form method="POST" action="{{ url_for('work_end_step2') }}" class="work-prepare-form" id="workEndStep2Form">
+            <div class="form-group">
+                <label for="cash_fare">현금 운임</label>
+                <div class="input-with-unit">
+                    <input type="text" id="cash_fare" name="cash_fare" class="form-control number-input" placeholder="0" value="0">
+                    <span class="unit">원</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="card_fare">카드 운임</label>
+                <div class="input-with-unit">
+                    <input type="text" id="card_fare" name="card_fare" class="form-control number-input" placeholder="0" value="0">
+                    <span class="unit">원</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="toll_fee">통행료 (선택)</label>
+                <div class="input-with-unit">
+                    <input type="text" id="toll_fee" name="toll_fee" class="form-control number-input" placeholder="0" value="0">
+                    <span class="unit">원</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="fuel_usage">연료 사용량 (선택)</label>
+                <div class="input-with-unit">
+                    <input type="text" id="fuel_usage" name="fuel_usage" class="form-control number-input" placeholder="0">
+                    <span class="unit">L(kW)</span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="fuel_cost">연료비 (선택)</label>
+                <div class="input-with-unit">
+                    <input type="text" id="fuel_cost" name="fuel_cost" class="form-control number-input" placeholder="0" value="0">
+                    <span class="unit">원</span>
+                </div>
+            </div>
+            
+            <button type="button" class="btn btn-danger btn-block btn-large btn-work-end-step2" id="workEndBtn">근무종료</button>
+        </form>
+    </div>
+</div>
+
+<!-- 확인 팝업 -->
+<div id="confirmModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>근무종료 확인</h3>
+        </div>
+        <div class="modal-body">
+            <div class="summary-item">
+                <span class="summary-label">운행일:</span>
+                <span class="summary-value" id="modalDate">{{ year }} / {{ month }} / {{ day }}</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">현금운임:</span>
+                <span class="summary-value" id="modalCashFare">0</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">카드운임:</span>
+                <span class="summary-value" id="modalCardFare">0</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">통행료:</span>
+                <span class="summary-value" id="modalTollFee">0</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">연료비:</span>
+                <span class="summary-value" id="modalFuelCost">0</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">연료:</span>
+                <span class="summary-value" id="modalFuelUsage">0</span>
+            </div>
+            <div class="confirm-question">
+                등록 하시겠습니까?
+            </div>
+            <div class="warning-message">
+                ※ 완료 후, 개인 수정 불가합니다.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="cancelBtn">취소</button>
+            <button type="button" class="btn btn-primary" id="confirmBtn">확인</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('workEndStep2Form');
+    const workEndBtn = document.getElementById('workEndBtn');
+    const confirmModal = document.getElementById('confirmModal');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const confirmBtn = document.getElementById('confirmBtn');
+    
+    // 숫자 입력 필드에 천 단위 콤마 추가
+    const numberInputs = document.querySelectorAll('.number-input');
+    numberInputs.forEach(input => {
+        input.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/,/g, '');
+            if (value && !isNaN(value)) {
+                e.target.value = parseInt(value).toLocaleString('ko-KR');
+            }
+        });
+        
+        input.addEventListener('blur', function(e) {
+            let value = e.target.value.replace(/,/g, '');
+            if (!value || value === '0') {
+                e.target.value = '0';
+            }
+        });
+    });
+    
+    // 근무종료 버튼 클릭 시 팝업 표시
+    workEndBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        // 입력값 가져오기
+        const cashFare = document.getElementById('cash_fare').value.replace(/,/g, '') || '0';
+        const cardFare = document.getElementById('card_fare').value.replace(/,/g, '') || '0';
+        const tollFee = document.getElementById('toll_fee').value.replace(/,/g, '') || '0';
+        const fuelCost = document.getElementById('fuel_cost').value.replace(/,/g, '') || '0';
+        const fuelUsage = document.getElementById('fuel_usage').value || '0';
+        
+        // 팝업에 값 표시
+        document.getElementById('modalCashFare').textContent = parseInt(cashFare).toLocaleString('ko-KR');
+        document.getElementById('modalCardFare').textContent = parseInt(cardFare).toLocaleString('ko-KR');
+        document.getElementById('modalTollFee').textContent = parseInt(tollFee).toLocaleString('ko-KR');
+        document.getElementById('modalFuelCost').textContent = parseInt(fuelCost).toLocaleString('ko-KR');
+        document.getElementById('modalFuelUsage').textContent = fuelUsage;
+        
+        // 팝업 표시
+        confirmModal.style.display = 'flex';
+    });
+    
+    // 취소 버튼
+    cancelBtn.addEventListener('click', function() {
+        confirmModal.style.display = 'none';
+    });
+    
+    // 확인 버튼 - 폼 제출
+    confirmBtn.addEventListener('click', function() {
+        form.submit();
+    });
+    
+    // 모달 외부 클릭 시 닫기
+    confirmModal.addEventListener('click', function(e) {
+        if (e.target === confirmModal) {
+            confirmModal.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}
+

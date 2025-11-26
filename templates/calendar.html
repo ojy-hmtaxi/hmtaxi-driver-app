@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}근무일정 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="calendar-container">
+    <div class="header">
+        <div class="header-left">
+            <h1>{{ month_name }} 근무일정</h1>
+            <div class="company-name">한미산업운수(주)</div>
+            <div class="user-info">
+                <span class="driver-name">{{ session.get('name', '') }} 기사님 ({{ session.get('employee_id', '') }})
+                    {% if today_vehicle %}
+                    <div class="today-vehicle">
+                        서울{{ today_vehicle }}{% if today_vehicle_type %} - {{ today_vehicle_type }}{% endif %}
+                    </div>
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="user-actions">
+                <a href="#" class="btn btn-primary btn-sm btn-notice" id="noticeBtn">
+                    공지사항
+                    {% if has_unread_notices %}
+                    <span class="notice-badge">N</span>
+                    {% endif %}
+                </a>
+                <a href="{{ url_for('logout') }}" class="btn btn-secondary btn-sm" id="logoutBtn">로그아웃</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="calendar-wrapper">
+        <div class="calendar-header">
+            <div class="month-navigation">
+                <a href="{{ url_for('calendar_view', year=prev_year, month=prev_month) }}" class="month-nav-btn prev-month">◀</a>
+                <h2>{{ year }}년 {{ month }}월</h2>
+                <a href="{{ url_for('calendar_view', year=next_year, month=next_month) }}" class="month-nav-btn next-month">▶</a>
+            </div>
+        </div>
+        
+        <table class="calendar-table">
+            <thead>
+                <tr>
+                    <th style="color: #dc3545;">일</th>
+                    <th>월</th>
+                    <th>화</th>
+                    <th>수</th>
+                    <th>목</th>
+                    <th>금</th>
+                    <th>토</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for week in calendar %}
+                <tr>
+                    {% for day in week %}
+                    <td class="calendar-day {% if day == 0 %}empty{% endif %} {% if loop.index0 == 0 and day != 0 %}sunday{% endif %} {% if day == current_date.day and month == current_date.month and year == current_date.year %}today{% endif %} {% if day in work_status %}{% if work_status[day] == 'O' %}work-day{% elif work_status[day] == 'X' %}absent-day{% elif work_status[day] == 'R' %}scheduled-day{% elif work_status[day] == '/' %}holiday-day{% endif %}{% endif %}">
+                        {% if day != 0 %}
+                            <div class="day-number">{{ day }}</div>
+                            {% if day == current_date.day and month == current_date.month and year == current_date.year %}
+                                <div class="today-circle"></div>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <span class="work-status work">근무일</span>
+            </div>
+            <div class="legend-item">
+                <span class="work-status absent">결근일</span>
+            </div>
+            <div class="legend-item">
+                <span class="work-status scheduled">예정일</span>
+            </div>
+            <div class="legend-item">
+                <span class="work-status holiday">휴무일</span>
+            </div>
+            <div class="legend-item">
+                <span class="work-status today">오늘</span>
+            </div>
+        </div>
+
+        <div class="summary">
+            <div class="summary-item">
+                <span class="label">근무일수:</span>
+                <span class="value">{% if work_days >= 24 %}만근{% else %}{{ work_days }}일{% endif %}</span>
+            </div>
+            <div class="summary-item">
+                <span class="label">결근일수:</span>
+                <span class="value">{{ absent_days }}일</span>
+            </div>
+            <div class="summary-item">
+                <span class="label">매출:</span>
+                <span class="value">{{ "{:,}".format(total_revenue) }}원</span>
+            </div>
+            <div class="summary-item">
+                <span class="label">연료비:</span>
+                <span class="value">{{ "{:,}".format(total_fuel_cost) }}원</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="navigation">
+        <a href="{{ url_for('work_start') if can_start_work else '#' }}"
+           class="btn btn-primary btn-work-prepare {% if not can_start_work %}btn-disabled{% endif %}"
+           {% if not can_start_work %}aria-disabled="true"{% endif %}>근무준비</a>
+        <a href="{{ url_for('work_end') }}" class="btn btn-danger btn-work-end {% if not can_end_work %}btn-disabled{% endif %}" {% if not can_end_work %}aria-disabled="true"{% endif %}>근무종료</a>
+    </div>
+</div>
+
+<!-- 로그아웃 확인 모달 -->
+<div id="logoutModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>로그아웃</h3>
+        </div>
+        <div class="modal-body">
+            <div class="confirm-question">
+                로그아웃 하시겠습니까?
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="logoutCancelBtn">취소</button>
+            <button type="button" class="btn btn-primary" id="logoutConfirmBtn">확인</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const logoutBtn = document.getElementById('logoutBtn');
+    const logoutModal = document.getElementById('logoutModal');
+    const logoutCancelBtn = document.getElementById('logoutCancelBtn');
+    const logoutConfirmBtn = document.getElementById('logoutConfirmBtn');
+    const logoutUrl = logoutBtn.getAttribute('href');
+    
+    // 모바일 화면인지 확인 (768px 이하)
+    function isMobile() {
+        return window.innerWidth <= 768;
+    }
+    
+    // 로그아웃 버튼 클릭 이벤트
+    logoutBtn.addEventListener('click', function(e) {
+        // 모바일 화면에서만 모달 표시
+        if (isMobile()) {
+            e.preventDefault();
+            logoutModal.style.display = 'flex';
+        }
+        // 데스크톱에서는 기본 동작 (직접 로그아웃)
+    });
+    
+    // 취소 버튼
+    logoutCancelBtn.addEventListener('click', function() {
+        logoutModal.style.display = 'none';
+    });
+    
+    // 확인 버튼 - 로그아웃 실행
+    logoutConfirmBtn.addEventListener('click', function() {
+        window.location.href = logoutUrl;
+    });
+    
+    // 모달 외부 클릭 시 닫기
+    logoutModal.addEventListener('click', function(e) {
+        if (e.target === logoutModal) {
+            logoutModal.style.display = 'none';
+        }
+    });
+    
+    // ESC 키로 모달 닫기
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && logoutModal.style.display === 'flex') {
+            logoutModal.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}
+

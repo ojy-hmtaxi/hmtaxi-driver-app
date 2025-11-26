@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}근무종료 감사 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="work-thanks-container">
+    <div class="thanks-content">
+        <div class="thanks-emoji">
+            <div class="clapping-hands">👏</div>
+            <div class="stars">
+                <span class="star">⭐</span>
+                <span class="star">⭐</span>
+                <span class="star">⭐</span>
+                <span class="star">⭐</span>
+                <span class="star">⭐</span>
+            </div>
+        </div>
+        <div class="thanks-message">
+            <h2>{{ session.get('name', '') }} 기사님, 감사합니다!</h2>
+            <p>오늘도 고생 많으셨습니다!</p>
+        </div>
+        <p class="auto-redirect">
+            <span id="countdown">3</span>초 후, 메인화면으로 돌아갑니다.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let countdown = 3;
+    const countdownElement = document.getElementById('countdown');
+    
+    function updateCountdown() {
+        countdownElement.textContent = countdown;
+        if (countdown === 0) {
+            window.location.href = "{{ url_for('calendar_view') }}";
+        } else {
+            countdown--;
+            setTimeout(updateCountdown, 1000);
+        }
+    }
+    updateCountdown();
+});
+</script>
+{% endblock %}

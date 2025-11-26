@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}근무응원 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="work-thanks-container">
+    <div class="thanks-content">
+        <div class="thanks-emoji">
+            <div class="thumbs-up">👍</div>
+            <div class="stars">
+                <span class="star">⭐</span>
+                <span class="star">⭐</span>
+                <span class="star">⭐</span>
+                <span class="star">⭐</span>
+                <span class="star">⭐</span>
+            </div>
+        </div>
+        
+        <div class="thanks-message">
+            <h2>{{ session.get('name', '') }} 기사님, 감사합니다!</h2>
+            <p>오늘도 좋은 하루 되세요!</p>
+        </div>
+        
+        <div class="auto-redirect">
+            <span id="countdown">3</span>초 후, 메인화면으로 돌아갑니다.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let countdown = 3;
+    const countdownElement = document.getElementById('countdown');
+    
+    const timer = setInterval(function() {
+        countdown--;
+        if (countdownElement) {
+            countdownElement.textContent = countdown;
+        }
+        
+        if (countdown <= 0) {
+            clearInterval(timer);
+            window.location.href = "{{ url_for('calendar_view') }}";
+        }
+    }, 1000);
+});
+</script>
+{% endblock %}
+

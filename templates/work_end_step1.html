@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}근무종료 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="work-prepare-container">
+    <div class="work-prepare-header">
+        <a href="{{ url_for('calendar_view') }}" class="back-button">‹</a>
+        <h1>근무종료</h1>
+    </div>
+    
+    <div class="work-prepare-box">
+        <form method="POST" action="{{ url_for('work_end') }}" class="work-prepare-form" id="workEndStep1Form">
+            <div class="form-group">
+                <label>운행 차량</label>
+                {% if assigned_vehicle %}
+                    <div class="vehicle-display">
+                        서울{{ assigned_vehicle }}{% if assigned_vehicle_type %} - {{ assigned_vehicle_type }}{% endif %}
+                    </div>
+                    <input type="hidden" name="vehicle_number" value="{{ assigned_vehicle }}">
+                {% else %}
+                    <div class="vehicle-display vehicle-not-assigned">
+                        배정된 차량이 없습니다.
+                    </div>
+                    <input type="hidden" name="vehicle_number" value="">
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label for="work_date">운행일</label>
+                <div class="date-display">{{ work_date_display }}</div>
+                <div class="work-type-toggle">
+                    <input type="radio" id="work_type_day" name="work_type" value="주간" {% if work_type_from_sheet == '주간' %}checked{% endif %} disabled>
+                    <label for="work_type_day" class="toggle-btn {% if work_type_from_sheet == '주간' %}toggle-active{% endif %}">주간</label>
+                    
+                    <input type="radio" id="work_type_night" name="work_type" value="야간" {% if work_type_from_sheet == '야간' %}checked{% endif %} disabled>
+                    <label for="work_type_night" class="toggle-btn {% if work_type_from_sheet == '야간' %}toggle-active{% endif %}">야간</label>
+                    
+                    <input type="radio" id="work_type_daily" name="work_type" value="일차" {% if work_type_from_sheet == '일차' %}checked{% endif %} disabled>
+                    <label for="work_type_daily" class="toggle-btn {% if work_type_from_sheet == '일차' %}toggle-active{% endif %}">일차</label>
+                </div>
+                <input type="hidden" name="work_type" value="{{ work_type_from_sheet }}">
+            </div>
+            
+            <div class="form-group">
+                <label>차량상태</label>
+                <div class="vehicle-status-toggle">
+                    <input type="radio" id="vehicle_good" name="vehicle_condition" value="양호" {% if default_vehicle_condition == '양호' %}checked{% endif %}>
+                    <label for="vehicle_good" class="status-btn status-good {% if default_vehicle_condition == '양호' %}status-active{% endif %}">
+                        <span class="status-icon">✓</span> 양호
+                    </label>
+                    
+                    <input type="radio" id="vehicle_bad" name="vehicle_condition" value="불량" {% if default_vehicle_condition == '불량' %}checked{% endif %}>
+                    <label for="vehicle_bad" class="status-btn status-bad {% if default_vehicle_condition == '불량' %}status-active{% endif %}">
+                        <span class="status-icon">△</span> 불량
+                    </label>
+                    
+                    <input type="radio" id="vehicle_repair" name="vehicle_condition" value="수리" {% if default_vehicle_condition == '수리' %}checked{% endif %}>
+                    <label for="vehicle_repair" class="status-btn status-repair {% if default_vehicle_condition == '수리' %}status-active{% endif %}">
+                        <span class="status-icon">○</span> 수리
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="special_notes">특기사항 (선택)</label>
+                <textarea id="special_notes" 
+                          name="special_notes" 
+                          rows="3" 
+                          placeholder="교통사고, 법규위반, 고장, 습득물 등 특기사항을 간략하게 작성해 주세요.">{{ default_special_notes }}</textarea>
+            </div>
+            
+            <button type="submit" class="btn btn-danger btn-block btn-large btn-work-end-step1">다음단계 ▶</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 근무유형 토글은 읽기 전용이므로 클릭 이벤트 제거
+    
+    // 상태 버튼 스타일 업데이트
+    const statusButtons = document.querySelectorAll('.status-btn');
+    statusButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+            statusButtons.forEach(b => b.classList.remove('status-active'));
+            this.classList.add('status-active');
+        });
+    });
+});
+</script>
+{% endblock %}
+
