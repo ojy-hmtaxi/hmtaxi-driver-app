@@ -1,9 +1,17 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
+from zoneinfo import ZoneInfo
 import calendar
 from functools import wraps
 import os
 import config
+
+# 한국 시간대 설정
+KST = ZoneInfo("Asia/Seoul")
+
+def get_kst_now():
+    """한국 시간대(Asia/Seoul)의 현재 시간 반환"""
+    return datetime.now(KST)
 from utils.auth import authenticate_user, change_password, check_default_password
 from utils.google_sheets import (
     get_user_work_data, 
@@ -130,7 +138,7 @@ def change_password_route():
 def calendar_view():
     """캘린더 뷰 - 근무일정"""
     employee_id = session.get('employee_id')
-    current_date = datetime.now()
+    current_date = get_kst_now()
     
     # URL 파라미터에서 년/월 가져오기 (없으면 현재 월)
     year_param = request.args.get('year', type=int)
@@ -298,7 +306,7 @@ def calendar_view():
 def work_start():
     """근무준비 페이지"""
     employee_id = session.get('employee_id')
-    current_date = datetime.now()
+    current_date = get_kst_now()
     year = current_date.year
     month = current_date.month
     day = current_date.day
@@ -420,7 +428,7 @@ def work_thanks():
 def work_end():
     """근무종료 1단계 페이지"""
     employee_id = session.get('employee_id')
-    current_date = datetime.now()
+    current_date = get_kst_now()
     year = current_date.year
     month = current_date.month
     day = current_date.day
@@ -528,7 +536,7 @@ def work_end():
 def work_end_step2():
     """근무종료 2단계 페이지"""
     employee_id = session.get('employee_id')
-    current_date = datetime.now()
+    current_date = get_kst_now()
     year = current_date.year
     month = current_date.month
     day = current_date.day
@@ -746,7 +754,7 @@ def work_history():
 def api_update_work_status(day):
     """근무 상태 업데이트 API"""
     employee_id = session.get('employee_id')
-    current_date = datetime.now()
+    current_date = get_kst_now()
     month = current_date.month
     month_name = config.MONTHS[month - 1]
     
