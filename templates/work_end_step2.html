@@ -39,7 +39,7 @@
                 <label for="fuel_usage">연료 사용량 (선택)</label>
                 <div class="input-with-unit">
                     <input type="text" id="fuel_usage" name="fuel_usage" class="form-control number-input" placeholder="0">
-                    <span class="unit">L(kW)</span>
+                    <span class="unit">L(kWh)</span>
                 </div>
             </div>
             
@@ -140,12 +140,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const fuelCost = document.getElementById('fuel_cost').value.replace(/,/g, '') || '0';
         const fuelUsage = document.getElementById('fuel_usage').value || '0';
         
-        // 팝업에 값 표시
-        document.getElementById('modalCashFare').textContent = parseInt(cashFare).toLocaleString('ko-KR');
-        document.getElementById('modalCardFare').textContent = parseInt(cardFare).toLocaleString('ko-KR');
-        document.getElementById('modalTollFee').textContent = parseInt(tollFee).toLocaleString('ko-KR');
-        document.getElementById('modalFuelCost').textContent = parseInt(fuelCost).toLocaleString('ko-KR');
-        document.getElementById('modalFuelUsage').textContent = fuelUsage;
+        // 팝업에 값 표시 (단위 포함)
+        document.getElementById('modalCashFare').textContent = parseInt(cashFare).toLocaleString('ko-KR') + '원';
+        document.getElementById('modalCardFare').textContent = parseInt(cardFare).toLocaleString('ko-KR') + '원';
+        document.getElementById('modalTollFee').textContent = parseInt(tollFee).toLocaleString('ko-KR') + '원';
+        document.getElementById('modalFuelCost').textContent = parseInt(fuelCost).toLocaleString('ko-KR') + '원';
+        document.getElementById('modalFuelUsage').textContent = fuelUsage + 'L(kWh)';
         
         // 팝업 표시
         confirmModal.style.display = 'flex';

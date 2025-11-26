@@ -165,6 +165,7 @@ def calendar_view():
     
     # 날짜별 근무 상태 매핑 (같은 사번의 모든 행 통합)
     work_status = {}
+    record_for_day = {}
     if all_work_data:
         # 상태 우선순위: O(근무) > X(결근) > R(예정일) > /(휴무일)
         status_priority = {'O': 4, 'X': 3, 'R': 2, '/': 1}
@@ -173,6 +174,7 @@ def calendar_view():
             day_str = str(day)
             best_status = None
             best_priority = 0
+            best_record = None
             
             # 모든 행에서 해당 날짜의 상태 확인
             for record in all_work_data:
@@ -190,10 +192,12 @@ def calendar_view():
                         if priority > best_priority:
                             best_priority = priority
                             best_status = status
+                            best_record = record
             
             # 가장 높은 우선순위의 상태를 저장
             if best_status:
                 work_status[day] = best_status
+                record_for_day[day] = best_record
     
     # 근무일수와 결근일수 계산 (work_status에서 직접 계산하여 정확도 보장)
     # work_status에서 해당 월의 유효한 날짜 범위 내에서 직접 계산
@@ -213,15 +217,22 @@ def calendar_view():
         can_start_work = work_status.get(today_day) != 'O'
         
         # 오늘 날짜에 배정된 차량번호와 차종 찾기 (근무 준비 완료 여부와 무관하게)
-        if all_work_data:
-            for record in all_work_data:
-                if today_day_str in record:
-                    # 오늘 날짜 컬럼이 존재하는 행에서 차량번호 가져오기
-                    vehicle_num = record.get('차량번호', '').strip()
-                    if vehicle_num:  # 차량번호가 있으면 사용
-                        today_vehicle = vehicle_num
-                        today_vehicle_type = record.get('차종', '').strip()
-                        break  # 첫 번째 차량번호가 있는 행의 차량 정보 사용
+        day_record = record_for_day.get(today_day)
+        if day_record:
+            vehicle_num = day_record.get('차량번호', '').strip()
+            if vehicle_num:
+                today_vehicle = vehicle_num
+                today_vehicle_type = day_record.get('차종', '').strip()
+        else:
+            # 우선순위 기록이 없으면 기존 방식으로 첫 번째 차량번호 사용
+            if all_work_data:
+                for record in all_work_data:
+                    if today_day_str in record:
+                        vehicle_num = record.get('차량번호', '').strip()
+                        if vehicle_num:
+                            today_vehicle = vehicle_num
+                            today_vehicle_type = record.get('차종', '').strip()
+                            break
 
     # 이전 달/다음 달 계산
     prev_month = month - 1
