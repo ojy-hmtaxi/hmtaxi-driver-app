@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from datetime import datetime, date, timedelta
 import calendar
 from functools import wraps
+import os
 import config
 from utils.auth import authenticate_user, change_password, check_default_password
 from utils.google_sheets import (
@@ -19,6 +20,15 @@ import pandas as pd
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
+
+# 브라우저 캐시 방지 (개발 환경)
+@app.after_request
+def after_request(response):
+    """모든 응답에 캐시 제어 헤더 추가"""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 def require_login(f):
     """로그인 필수 데코레이터"""
@@ -185,21 +195,11 @@ def calendar_view():
             if best_status:
                 work_status[day] = best_status
     
-    # 근무일수와 결근일수 합산 (같은 사번의 모든 행)
-    work_days = 0
-    absent_days = 0
-    if all_work_data:
-        for record in all_work_data:
-            try:
-                work_days_val = record.get('근무일수', 0) or 0
-                work_days += int(work_days_val) if work_days_val else 0
-            except (ValueError, TypeError):
-                pass
-            try:
-                absent_days_val = record.get('결근일수', 0) or 0
-                absent_days += int(absent_days_val) if absent_days_val else 0
-            except (ValueError, TypeError):
-                pass
+    # 근무일수와 결근일수 계산 (work_status에서 직접 계산하여 정확도 보장)
+    # work_status에서 해당 월의 유효한 날짜 범위 내에서 직접 계산
+    total_days_in_month_for_calc = calendar.monthrange(year, month)[1]
+    work_days = sum(1 for day in range(1, total_days_in_month_for_calc + 1) if work_status.get(day) == 'O')  # 근무일수 (O 상태)
+    absent_days = sum(1 for day in range(1, total_days_in_month_for_calc + 1) if work_status.get(day) == 'X')  # 결근일수 (X 상태)
     
     # 오늘 날짜에 배정받은 차량번호와 차종 찾기
     today_vehicle = None
@@ -242,6 +242,19 @@ def calendar_view():
     sales_summary = get_user_sales_summary(employee_id, month_name)
     total_revenue = sales_summary.get('total_revenue', 0)
     total_fuel_cost = sales_summary.get('total_fuel_cost', 0)
+    
+    # 만근 기준 계산: 그 달의 총 일수 - 휴무일 (결근일은 제외하지 않음)
+    total_days_in_month = calendar.monthrange(year, month)[1]  # 그 달의 총 일수
+    # work_status에서 해당 월의 유효한 날짜 범위 내에서 휴무일 개수만 계산
+    holiday_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == '/')  # 휴무일 개수
+    full_attendance_threshold = total_days_in_month - holiday_days_count  # 만근 기준 (총 일수 - 휴무일)
+    is_full_attendance = work_days >= full_attendance_threshold  # 만근 여부
+    
+    # 디버깅: 실제 값 출력 (프로덕션에서는 제거 가능)
+    absent_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X')  # 결근일 개수 (디버깅용)
+    print(f"DEBUG - 만근 계산: 총일수={total_days_in_month}, 결근일={absent_days_count}, 휴무일={holiday_days_count}, 만근기준={full_attendance_threshold}, 근무일수={work_days}, 만근여부={is_full_attendance}")
+    print(f"DEBUG - work_status에서 X인 날짜: {[day for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X']}")
+    print(f"DEBUG - work_status에서 /인 날짜: {[day for day in range(1, total_days_in_month + 1) if work_status.get(day) == '/']}")
 
     # 공지사항 읽지 않은 개수 확인 (아직 구현 전이므로 임시로 False)
     has_unread_notices = False  # TODO: 공지사항 기능 구현 시 실제 값으로 변경
@@ -266,6 +279,7 @@ def calendar_view():
                          can_start_work=can_start_work,
                          today_vehicle=today_vehicle,
                          today_vehicle_type=today_vehicle_type,
+                         is_full_attendance=is_full_attendance,
                          has_unread_notices=has_unread_notices)
 
 @app.route('/work-start', methods=['GET', 'POST'])
@@ -733,5 +747,8 @@ def api_update_work_status(day):
         return jsonify({'success': False, 'message': '근무시작 기록에 실패했습니다.'}), 400
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Cloudtype.io 등 클라우드 환경에서는 PORT 환경 변수 사용
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(debug=debug, host='0.0.0.0', port=port)
 

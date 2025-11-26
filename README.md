@@ -115,13 +115,44 @@ python app.py
 
 ```bash
 export SECRET_KEY='your-secret-key-here'
+export GOOGLE_CREDENTIALS='{"type":"service_account",...}'  # credentials.json의 전체 내용
 ```
 
-## 주의사항
+## Cloudtype.io 배포
+
+### 1. 환경 변수 설정
+
+Cloudtype.io 대시보드에서 다음 환경 변수를 설정하세요:
+
+1. **SECRET_KEY**: Flask 세션 암호화 키 (임의의 긴 문자열)
+2. **GOOGLE_CREDENTIALS**: `credentials.json` 파일의 전체 내용을 JSON 문자열로 설정
+
+#### GOOGLE_CREDENTIALS 설정 방법:
+
+1. 로컬의 `credentials.json` 파일을 열기
+2. 파일의 모든 내용을 복사 (한 줄로 되어 있어도 됨)
+3. Cloudtype.io 환경 변수 설정에서:
+   - 변수명: `GOOGLE_CREDENTIALS`
+   - 변수값: 복사한 JSON 내용 전체를 붙여넣기
+   - 주의: 따옴표나 특수문자가 포함되어 있어도 그대로 붙여넣기
+
+예시:
+```
+GOOGLE_CREDENTIALS={"type":"service_account","project_id":"your-project",...}
+```
+
+### 2. 배포 설정
+
+- **빌드 명령**: `pip install -r requirements.txt`
+- **실행 명령**: `python app.py` 또는 `gunicorn app:app`
+- **포트**: Cloudtype.io가 자동으로 `PORT` 환경 변수를 제공하므로, `app.py`에서 `os.environ.get('PORT', 5000)` 사용 권장
+
+### 3. 주의사항
 
 1. `credentials.json` 파일은 절대 공개 저장소에 업로드하지 마세요.
-2. 프로덕션 환경에서는 `SECRET_KEY`를 안전하게 관리하세요.
-3. Google Sheets의 서비스 계정 권한을 적절히 설정하세요.
+2. Cloudtype.io 환경 변수에 `GOOGLE_CREDENTIALS`를 설정하면 파일이 필요 없습니다.
+3. 프로덕션 환경에서는 `SECRET_KEY`를 안전하게 관리하세요.
+4. Google Sheets의 서비스 계정 권한을 적절히 설정하세요.
 
 ## 라이선스
 

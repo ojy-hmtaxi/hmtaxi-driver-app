@@ -91,7 +91,7 @@
         <div class="summary">
             <div class="summary-item">
                 <span class="label">근무일수:</span>
-                <span class="value">{% if work_days >= 24 %}만근{% else %}{{ work_days }}일{% endif %}</span>
+                <span class="value">{% if is_full_attendance %}만근{% else %}{{ work_days }}일{% endif %}</span>
             </div>
             <div class="summary-item">
                 <span class="label">결근일수:</span>

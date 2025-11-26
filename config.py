@@ -1,4 +1,5 @@
 import os
+import json
 
 # Google Sheets 설정
 SPREADSHEET_NAME = "work_DB_2026"
@@ -10,8 +11,21 @@ SPREADSHEET_ID = "1mjQTR8FKMnbszfi0ci0w7AyF5Yc41PmQ1OQH-7aCDIw"
 SALES_SPREADSHEET_NAME = "sales_DB_2026"
 SALES_SPREADSHEET_ID = "1cWRAktg_LWV4cJ0wesDDEltYo6GQ0yOlhwMSVihjY9M"
 
+# Google API 인증 정보
+# 환경 변수 GOOGLE_CREDENTIALS가 있으면 사용, 없으면 파일에서 읽기
+GOOGLE_CREDENTIALS_JSON = os.environ.get('GOOGLE_CREDENTIALS')
 CREDENTIALS_FILE = "credentials.json"
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+
+def get_google_credentials():
+    """Google 인증 정보를 딕셔너리로 반환 (환경 변수 우선, 없으면 None)"""
+    if GOOGLE_CREDENTIALS_JSON:
+        try:
+            return json.loads(GOOGLE_CREDENTIALS_JSON)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing GOOGLE_CREDENTIALS environment variable: {e}")
+            return None
+    return None
 
 # 세션 설정
 SECRET_KEY = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')

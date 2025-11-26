@@ -1,13 +1,32 @@
 import gspread
 from google.oauth2.service_account import Credentials
 import config
+import os
 
 def get_google_sheets_client():
     """Google Sheets API 클라이언트 생성"""
-    creds = Credentials.from_service_account_file(
-        config.CREDENTIALS_FILE,
-        scopes=config.SCOPES
-    )
+    # 환경 변수에서 인증 정보 가져오기 (Cloudtype.io 등 클라우드 배포용)
+    credentials_dict = config.get_google_credentials()
+    
+    if credentials_dict:
+        # 환경 변수에서 가져온 JSON 사용
+        creds = Credentials.from_service_account_info(
+            credentials_dict,
+            scopes=config.SCOPES
+        )
+    else:
+        # 로컬 파일에서 읽기 (개발 환경)
+        if not os.path.exists(config.CREDENTIALS_FILE):
+            raise FileNotFoundError(
+                f"credentials.json 파일을 찾을 수 없습니다.\n"
+                f"로컬 개발 환경에서는 {config.CREDENTIALS_FILE} 파일이 필요합니다.\n"
+                f"클라우드 배포 환경에서는 GOOGLE_CREDENTIALS 환경 변수를 설정하세요."
+            )
+        creds = Credentials.from_service_account_file(
+            config.CREDENTIALS_FILE,
+            scopes=config.SCOPES
+        )
+    
     client = gspread.authorize(creds)
     return client
 
@@ -332,10 +351,17 @@ def add_note_via_api(worksheet, row, col, note_text):
         import config
         
         # 인증 정보 가져오기
-        creds = Credentials.from_service_account_file(
-            config.CREDENTIALS_FILE,
-            scopes=config.SCOPES
-        )
+        credentials_dict = config.get_google_credentials()
+        if credentials_dict:
+            creds = Credentials.from_service_account_info(
+                credentials_dict,
+                scopes=config.SCOPES
+            )
+        else:
+            creds = Credentials.from_service_account_file(
+                config.CREDENTIALS_FILE,
+                scopes=config.SCOPES
+            )
         
         # Google Sheets API 서비스 빌드
         service = build('sheets', 'v4', credentials=creds)
@@ -584,10 +610,17 @@ def get_note_via_api(worksheet, row, col):
         import config
         
         # 인증 정보 가져오기
-        creds = Credentials.from_service_account_file(
-            config.CREDENTIALS_FILE,
-            scopes=config.SCOPES
-        )
+        credentials_dict = config.get_google_credentials()
+        if credentials_dict:
+            creds = Credentials.from_service_account_info(
+                credentials_dict,
+                scopes=config.SCOPES
+            )
+        else:
+            creds = Credentials.from_service_account_file(
+                config.CREDENTIALS_FILE,
+                scopes=config.SCOPES
+            )
         
         # Google Sheets API 서비스 빌드
         service = build('sheets', 'v4', credentials=creds)
