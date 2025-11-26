@@ -39,7 +39,7 @@
                 <label for="fuel_usage">연료 사용량 (선택)</label>
                 <div class="input-with-unit">
                     <input type="text" id="fuel_usage" name="fuel_usage" class="form-control number-input" placeholder="0">
-                    <span class="unit">L(kWh)</span>
+                    <span class="unit">L (kWh)</span>
                 </div>
             </div>
             
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('modalCardFare').textContent = parseInt(cardFare).toLocaleString('ko-KR') + '원';
         document.getElementById('modalTollFee').textContent = parseInt(tollFee).toLocaleString('ko-KR') + '원';
         document.getElementById('modalFuelCost').textContent = parseInt(fuelCost).toLocaleString('ko-KR') + '원';
-        document.getElementById('modalFuelUsage').textContent = fuelUsage + 'L(kWh)';
+        document.getElementById('modalFuelUsage').textContent = fuelUsage + 'L (kWh)';
         
         // 팝업 표시
         confirmModal.style.display = 'flex';
