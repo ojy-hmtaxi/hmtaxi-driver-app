@@ -336,7 +336,7 @@ def format_work_details_note(work_details):
         note_lines.append(f"근무유형: {work_details.get('work_type')}")
     
     if work_details.get('vehicle_condition'):
-        note_lines.append(f"차량상태: {work_details.get('vehicle_condition')}")
+        note_lines.append(f"보고사항: {work_details.get('vehicle_condition')}")
     
     if work_details.get('special_notes'):
         note_lines.append(f"특기사항: {work_details.get('special_notes')}")
@@ -564,7 +564,7 @@ def get_today_work_start_info(employee_id, month_sheet_name, day):
                                         info['work_date'] = value
                                     elif key == '근무유형':
                                         info['work_type'] = value
-                                    elif key == '차량상태':
+                                    elif key == '보고사항':
                                         info['vehicle_condition'] = value
                                     elif key == '특기사항':
                                         info['special_notes'] = value
@@ -675,7 +675,7 @@ def add_sales_record(month_sheet_name, sales_data, note_text=None, vehicle_condi
         month_sheet_name: 월별 시트 이름
         sales_data: 매출 데이터 딕셔너리
         note_text: 근무시간(분) 셀에 추가할 메모 (운행시작일시, 운행종료일시, 근무시간)
-        vehicle_condition_note: 차량번호 셀에 추가할 메모 (차량상태)
+        vehicle_condition_note: 차량번호 셀에 추가할 메모 (보고사항)
     """
     try:
         worksheet = get_sales_worksheet(month_sheet_name)
@@ -716,7 +716,7 @@ def add_sales_record(month_sheet_name, sales_data, note_text=None, vehicle_condi
                 except Exception as api_error:
                     print(f"Warning: Could not insert note via API for sales record: {api_error}")
         
-        # 차량번호 셀에 메모 추가 (차량상태)
+        # 차량번호 셀에 메모 추가 (보고사항)
         if vehicle_condition_note and '차량번호' in header:
             try:
                 from gspread.utils import rowcol_to_a1

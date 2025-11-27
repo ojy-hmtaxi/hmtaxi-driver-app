@@ -515,8 +515,9 @@ def work_end():
     
     # 기본값 설정
     default_work_type = work_type_from_sheet
-    default_vehicle_condition = today_info.get('vehicle_condition', '양호') if today_info else '양호'
-    default_special_notes = today_info.get('special_notes', '') if today_info else ''
+    default_vehicle_condition = today_info.get('vehicle_condition', '○ ○') if today_info else '○ ○'
+    # 근무종료 step1에서는 특기사항을 비워둠 (근무준비와 별개)
+    default_special_notes = ''
     
     return render_template('work_end_step1.html',
                          employee_id=employee_id,
@@ -658,10 +659,10 @@ def work_end_step2():
         
         note_text = "\n".join(note_lines)
         
-        # 차량상태 메모 (차량번호 셀에 추가)
+        # 보고사항 메모 (차량번호 셀에 추가)
         vehicle_condition_note = None
         if step1_data.get('vehicle_condition'):
-            vehicle_condition_note = f"차량상태: {step1_data.get('vehicle_condition')}"
+            vehicle_condition_note = f"보고사항: {step1_data.get('vehicle_condition')}"
         
         success = add_sales_record(month_name, sales_data, note_text=note_text, vehicle_condition_note=vehicle_condition_note)
         
