@@ -5,6 +5,8 @@ import calendar
 from functools import wraps
 import os
 import config
+import threading
+import time
 
 # 한국 시간대 설정
 KST = ZoneInfo("Asia/Seoul")
@@ -12,6 +14,60 @@ KST = ZoneInfo("Asia/Seoul")
 def get_kst_now():
     """한국 시간대(Asia/Seoul)의 현재 시간 반환"""
     return datetime.now(KST)
+
+# 간단한 메모리 캐시 클래스 (TTL 지원)
+class SimpleCache:
+    """TTL(Time To Live)을 지원하는 간단한 메모리 캐시"""
+    def __init__(self, default_ttl=60):  # 기본 60초
+        self._cache = {}
+        self._timestamps = {}
+        self._lock = threading.Lock()
+        self.default_ttl = default_ttl
+    
+    def get(self, key):
+        """캐시에서 값 가져오기 (만료된 경우 None 반환)"""
+        with self._lock:
+            if key not in self._cache:
+                return None
+            
+            # TTL 확인
+            if time.time() - self._timestamps[key] > self.default_ttl:
+                del self._cache[key]
+                del self._timestamps[key]
+                return None
+            
+            return self._cache[key]
+    
+    def set(self, key, value, ttl=None):
+        """캐시에 값 저장"""
+        with self._lock:
+            self._cache[key] = value
+            self._timestamps[key] = time.time()
+            if ttl:
+                # TTL이 지정된 경우 별도 저장 (현재는 default_ttl 사용)
+                pass
+    
+    def clear(self, key=None):
+        """캐시 삭제 (key가 None이면 전체 삭제)"""
+        with self._lock:
+            if key is None:
+                self._cache.clear()
+                self._timestamps.clear()
+            else:
+                self._cache.pop(key, None)
+                self._timestamps.pop(key, None)
+    
+    def clear_pattern(self, pattern):
+        """패턴에 맞는 키들 삭제 (예: 'work_data:6000:*')"""
+        with self._lock:
+            keys_to_delete = [k for k in self._cache.keys() if pattern in k]
+            for key in keys_to_delete:
+                del self._cache[key]
+                del self._timestamps[key]
+
+# 전역 캐시 인스턴스 (근무 데이터: 30초, 매출 데이터: 60초)
+work_data_cache = SimpleCache(default_ttl=30)  # 근무 데이터는 30초 캐시
+sales_data_cache = SimpleCache(default_ttl=60)  # 매출 데이터는 60초 캐시
 from utils.auth import authenticate_user, change_password, check_default_password
 from utils.google_sheets import (
     get_user_work_data, 
@@ -29,13 +85,18 @@ import pandas as pd
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
-# 브라우저 캐시 방지 (개발 환경)
+# 정적 파일 캐싱 최적화 및 동적 페이지 캐시 방지
 @app.after_request
 def after_request(response):
-    """모든 응답에 캐시 제어 헤더 추가"""
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
+    """응답에 적절한 캐시 제어 헤더 추가"""
+    # 정적 파일(이미지, CSS, JS)은 캐싱 허용
+    if request.endpoint and 'static' in request.endpoint:
+        response.headers["Cache-Control"] = "public, max-age=3600"  # 1시간 캐싱
+    else:
+        # 동적 페이지는 캐시 방지
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return response
 
 def require_login(f):
@@ -46,6 +107,33 @@ def require_login(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return wrapper
+
+# 캐싱 래퍼 함수들
+def get_all_user_work_data_cached(employee_id, month_sheet_name):
+    """캐시를 사용하는 get_all_user_work_data 래퍼"""
+    cache_key = f"work_data:{employee_id}:{month_sheet_name}"
+    cached_data = work_data_cache.get(cache_key)
+    if cached_data is not None:
+        return cached_data
+    
+    # 캐시에 없으면 실제 데이터 가져오기
+    data = get_all_user_work_data(employee_id, month_sheet_name)
+    if data is not None:
+        work_data_cache.set(cache_key, data)
+    return data
+
+def get_user_sales_summary_cached(employee_id, month_sheet_name):
+    """캐시를 사용하는 get_user_sales_summary 래퍼"""
+    cache_key = f"sales_summary:{employee_id}:{month_sheet_name}"
+    cached_data = sales_data_cache.get(cache_key)
+    if cached_data is not None:
+        return cached_data
+    
+    # 캐시에 없으면 실제 데이터 가져오기
+    data = get_user_sales_summary(employee_id, month_sheet_name)
+    if data is not None:
+        sales_data_cache.set(cache_key, data)
+    return data
 
 def get_work_start_info_with_fallback(employee_id, reference_date):
     """현재 날짜 기준으로 운행시작 정보를 찾고, 없으면 하루 전 정보를 반환"""
@@ -161,8 +249,8 @@ def calendar_view():
     # 현재 월의 시트 이름
     month_name = config.MONTHS[month - 1]
     
-    # 사용자의 근무 데이터 가져오기 (같은 사번의 모든 행)
-    all_work_data = get_all_user_work_data(employee_id, month_name)
+    # 사용자의 근무 데이터 가져오기 (캐시 사용)
+    all_work_data = get_all_user_work_data_cached(employee_id, month_name)
     
     # 첫 번째 행을 기본 데이터로 사용 (기타 정보 표시용)
     work_data = all_work_data[0] if all_work_data and len(all_work_data) > 0 else None
@@ -257,8 +345,8 @@ def calendar_view():
     
     current_date_only = current_date.date()
     
-    # 이달의 매출 합계 가져오기 (sales_DB_2026에서)
-    sales_summary = get_user_sales_summary(employee_id, month_name)
+    # 이달의 매출 합계 가져오기 (캐시 사용)
+    sales_summary = get_user_sales_summary_cached(employee_id, month_name)
     total_revenue = sales_summary.get('total_revenue', 0)
     total_fuel_cost = sales_summary.get('total_fuel_cost', 0)
     
@@ -269,11 +357,11 @@ def calendar_view():
     full_attendance_threshold = total_days_in_month - holiday_days_count  # 만근 기준 (총 일수 - 휴무일)
     is_full_attendance = work_days >= full_attendance_threshold  # 만근 여부
     
-    # 디버깅: 실제 값 출력 (프로덕션에서는 제거 가능)
-    absent_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X')  # 결근일 개수 (디버깅용)
-    print(f"DEBUG - 만근 계산: 총일수={total_days_in_month}, 결근일={absent_days_count}, 휴무일={holiday_days_count}, 만근기준={full_attendance_threshold}, 근무일수={work_days}, 만근여부={is_full_attendance}")
-    print(f"DEBUG - work_status에서 X인 날짜: {[day for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X']}")
-    print(f"DEBUG - work_status에서 /인 날짜: {[day for day in range(1, total_days_in_month + 1) if work_status.get(day) == '/']}")
+    # 디버깅: 실제 값 출력 (프로덕션에서는 주석 처리)
+    # absent_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X')  # 결근일 개수 (디버깅용)
+    # print(f"DEBUG - 만근 계산: 총일수={total_days_in_month}, 결근일={absent_days_count}, 휴무일={holiday_days_count}, 만근기준={full_attendance_threshold}, 근무일수={work_days}, 만근여부={is_full_attendance}")
+    # print(f"DEBUG - work_status에서 X인 날짜: {[day for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X']}")
+    # print(f"DEBUG - work_status에서 /인 날짜: {[day for day in range(1, total_days_in_month + 1) if work_status.get(day) == '/']}")
 
     # 공지사항 읽지 않은 개수 확인 (아직 구현 전이므로 임시로 False)
     has_unread_notices = False  # TODO: 공지사항 기능 구현 시 실제 값으로 변경
@@ -341,6 +429,8 @@ def work_start():
         success = update_work_status(employee_id, day, month_name, 'O', work_details=work_details, vehicle_number=vehicle_number)
         
         if success:
+            # 캐시 무효화 (근무 데이터 업데이트됨)
+            work_data_cache.clear_pattern(f"work_data:{employee_id}:{month_name}")
             # 근무응원 페이지로 리다이렉트
             return redirect(url_for('work_thanks'))
         else:
@@ -349,8 +439,8 @@ def work_start():
     # 사용자 정보 가져오기
     user = get_user_by_id(employee_id)
     
-    # 같은 사번의 모든 행에서 데이터 가져오기
-    all_work_data = get_all_user_work_data(employee_id, month_name)
+    # 같은 사번의 모든 행에서 데이터 가져오기 (캐시 사용)
+    all_work_data = get_all_user_work_data_cached(employee_id, month_name)
     
     # 선택된 날짜에 배정된 차량번호와 차종 찾기
     assigned_vehicle = None
@@ -458,8 +548,8 @@ def work_end():
     # 사용자 정보 가져오기
     user = get_user_by_id(employee_id)
     
-    # 같은 사번의 모든 행에서 데이터 가져오기
-    all_work_data = get_all_user_work_data(employee_id, lookup_month_name)
+    # 같은 사번의 모든 행에서 데이터 가져오기 (캐시 사용)
+    all_work_data = get_all_user_work_data_cached(employee_id, lookup_month_name)
     
     # 선택된 날짜에 배정된 차량번호와 차종 찾기
     assigned_vehicle = None
@@ -611,8 +701,8 @@ def work_end_step2():
         # 근무시간(분) 추가 (나중에 계산된 값으로 업데이트됨)
         work_duration_minutes = None
         
-        # 차종 찾기 (근무 시작 정보가 있는 월 기준)
-        all_work_data = get_all_user_work_data(employee_id, start_month_name)
+        # 차종 찾기 (근무 시작 정보가 있는 월 기준, 캐시 사용)
+        all_work_data = get_all_user_work_data_cached(employee_id, start_month_name)
         if all_work_data:
             for record in all_work_data:
                 if record.get('차량번호', '').strip() == step1_data.get('vehicle_number', ''):
@@ -667,6 +757,8 @@ def work_end_step2():
         success = add_sales_record(month_name, sales_data, note_text=note_text, vehicle_condition_note=vehicle_condition_note)
         
         if success:
+            # 캐시 무효화 (매출 데이터 업데이트됨)
+            sales_data_cache.clear_pattern(f"sales_summary:{employee_id}:{month_name}")
             # 세션에서 1단계 데이터 제거
             session.pop('work_end_step1', None)
             # 감사 페이지로 이동
@@ -774,6 +866,8 @@ def api_update_work_status(day):
     success = update_work_status(employee_id, day, month_name, 'O')
     
     if success:
+        # 캐시 무효화
+        work_data_cache.clear_pattern(f"work_data:{employee_id}:{month_name}")
         return jsonify({'success': True, 'message': '근무시작이 기록되었습니다.'})
     else:
         return jsonify({'success': False, 'message': '근무시작 기록에 실패했습니다.'}), 400
