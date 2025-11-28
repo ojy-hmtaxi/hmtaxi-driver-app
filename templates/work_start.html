@@ -40,6 +40,9 @@
                     
                     <input type="radio" id="work_type_daily" name="work_type" value="일차" {% if work_type_from_sheet == '일차' %}checked{% endif %} disabled>
                     <label for="work_type_daily" class="toggle-btn {% if work_type_from_sheet == '일차' %}toggle-active{% endif %}">일차</label>
+                    
+                    <input type="radio" id="work_type_shift" name="work_type" value="교대" {% if work_type_from_sheet == '교대' %}checked{% endif %} disabled>
+                    <label for="work_type_shift" class="toggle-btn {% if work_type_from_sheet == '교대' %}toggle-active{% endif %}">교대</label>
                 </div>
                 <input type="hidden" name="work_type" value="{{ work_type_from_sheet }}">
             </div>

@@ -483,12 +483,12 @@ def work_start():
     if best_record and best_record.get('근무유형'):
         work_type_from_sheet = str(best_record.get('근무유형', '주간')).strip()
         # 근무유형이 '일차'인 경우 '일차'로 설정
-        if work_type_from_sheet not in ['주간', '야간', '일차']:
+        if work_type_from_sheet not in ['주간', '야간', '일차', '교대']:
             work_type_from_sheet = '주간'  # 유효하지 않은 값이면 기본값 사용
     elif work_data and work_data.get('근무유형'):
         # best_record가 없으면 첫 번째 행에서 가져오기
         work_type_from_sheet = str(work_data.get('근무유형', '주간')).strip()
-        if work_type_from_sheet not in ['주간', '야간', '일차']:
+        if work_type_from_sheet not in ['주간', '야간', '일차', '교대']:
             work_type_from_sheet = '주간'  # 유효하지 않은 값이면 기본값 사용
     
     # 현재 날짜/시간 포맷팅 (운행시작일시 표시용)
@@ -528,14 +528,19 @@ def work_end():
         # 1단계 폼 데이터 가져오기
         vehicle_number = request.form.get('vehicle_number', '')
         work_type = request.form.get('work_type', '')
-        vehicle_condition = request.form.get('vehicle_condition', '')
+        accident_status = request.form.get('accident_status', '')
         special_notes = request.form.get('special_notes', '')
+        
+        # 사고유무 필수 검증
+        if not accident_status:
+            flash('사고유무를 선택해주세요.', 'error')
+            return redirect(url_for('work_end'))
         
         # 세션에 1단계 데이터 저장
         session['work_end_step1'] = {
             'vehicle_number': vehicle_number,
             'work_type': work_type,
-            'vehicle_condition': vehicle_condition,
+            'accident_status': accident_status,
             'special_notes': special_notes
         }
         
@@ -592,12 +597,12 @@ def work_end():
     if best_record and best_record.get('근무유형'):
         work_type_from_sheet = str(best_record.get('근무유형', '주간')).strip()
         # 근무유형이 '일차'인 경우 '일차'로 설정
-        if work_type_from_sheet not in ['주간', '야간', '일차']:
+        if work_type_from_sheet not in ['주간', '야간', '일차', '교대']:
             work_type_from_sheet = '주간'  # 유효하지 않은 값이면 기본값 사용
     elif work_data and work_data.get('근무유형'):
         # best_record가 없으면 첫 번째 행에서 가져오기
         work_type_from_sheet = str(work_data.get('근무유형', '주간')).strip()
-        if work_type_from_sheet not in ['주간', '야간', '일차']:
+        if work_type_from_sheet not in ['주간', '야간', '일차', '교대']:
             work_type_from_sheet = '주간'  # 유효하지 않은 값이면 기본값 사용
     
     # 오늘 날짜 표시
@@ -605,7 +610,6 @@ def work_end():
     
     # 기본값 설정
     default_work_type = work_type_from_sheet
-    default_vehicle_condition = today_info.get('vehicle_condition', '○ ○') if today_info else '○ ○'
     # 근무종료 step1에서는 특기사항을 비워둠 (근무준비와 별개)
     default_special_notes = ''
     
@@ -619,7 +623,6 @@ def work_end():
                          assigned_vehicle=assigned_vehicle,
                          assigned_vehicle_type=assigned_vehicle_type,
                          work_type_from_sheet=work_type_from_sheet,
-                         default_vehicle_condition=default_vehicle_condition,
                          default_special_notes=default_special_notes)
 
 @app.route('/work-end-step2', methods=['GET', 'POST'])
@@ -690,6 +693,7 @@ def work_end_step2():
             '운전기사': user.get('name', '') if user else '',
             '차량번호': step1_data.get('vehicle_number', ''),
             '차종': '',  # 차량번호에서 차종 찾기
+            '사고유무': step1_data.get('accident_status', ''),  # 사고유무 필드 추가
             '현금운임': cash_fare,
             '카드운임': card_fare,
             '통행료': toll_fee,
@@ -749,12 +753,8 @@ def work_end_step2():
         
         note_text = "\n".join(note_lines)
         
-        # 보고사항 메모 (차량번호 셀에 추가)
-        vehicle_condition_note = None
-        if step1_data.get('vehicle_condition'):
-            vehicle_condition_note = f"보고사항: {step1_data.get('vehicle_condition')}"
-        
-        success = add_sales_record(month_name, sales_data, note_text=note_text, vehicle_condition_note=vehicle_condition_note)
+        # 사고유무는 sales_data에 포함되어 있으므로 별도 메모 불필요
+        success = add_sales_record(month_name, sales_data, note_text=note_text)
         
         if success:
             # 캐시 무효화 (매출 데이터 업데이트됨)

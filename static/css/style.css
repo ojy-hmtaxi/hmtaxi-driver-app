@@ -157,6 +157,11 @@ body {
     color: #555;
 }
 
+.form-group label .required {
+    color: #e74c3c;
+    margin-left: 2px;
+}
+
 .form-group input,
 .form-group textarea,
 .form-group select {
@@ -725,15 +730,15 @@ body {
 }
 
 .status-btn.status-bad.status-active {
-    background-color: #fff3cd;
-    color: #856404;
-    border-color: #ffc107;
-}
-
-.status-btn.status-repair.status-active {
     background-color: #f8d7da;
     color: #721c24;
     border-color: #dc3545;
+}
+
+.status-btn.status-repair.status-active {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    border-color: #17a2b8;
 }
 
 .status-icon {
