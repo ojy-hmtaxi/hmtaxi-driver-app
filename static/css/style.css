@@ -133,19 +133,11 @@ body {
     max-width: 400px;
 }
 
-.logo-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-bottom: 5px;
-    width: 100%;
-}
-
-.company-logo {
-    max-width: 200px;
-    width: auto;
-    height: auto;
+.login-logo {
     display: block;
+    width: 200px;
+    margin: 0 auto 20px auto;
+    height: auto;
 }
 
 .login-box h1 {

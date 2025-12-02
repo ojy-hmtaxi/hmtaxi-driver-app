@@ -327,8 +327,8 @@ def calendar_view():
                         vehicle_num = record.get('차량번호', '').strip()
                         if vehicle_num:
                             today_vehicle = vehicle_num
-                        today_vehicle_type = record.get('차종', '').strip()
-                        break
+                            today_vehicle_type = record.get('차종', '').strip()
+                            break
 
     # 이전 달/다음 달 계산
     prev_month = month - 1
