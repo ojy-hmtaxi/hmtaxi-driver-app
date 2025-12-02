@@ -18,12 +18,12 @@
                         서울{{ assigned_vehicle }}{% if assigned_vehicle_type %} - {{ assigned_vehicle_type }}{% endif %}
                     </div>
                     <input type="hidden" name="vehicle_number" value="{{ assigned_vehicle }}">
-                {% else %}
+                    {% else %}
                     <div class="vehicle-display vehicle-not-assigned">
                         배정된 차량이 없습니다.
                     </div>
                     <input type="hidden" name="vehicle_number" value="">
-                {% endif %}
+                    {% endif %}
             </div>
             
             <div class="form-group">
