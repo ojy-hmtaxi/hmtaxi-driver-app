@@ -137,12 +137,12 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 5px;
     width: 100%;
 }
 
 .company-logo {
-    max-width: 100px;
+    max-width: 200px;
     width: auto;
     height: auto;
     display: block;

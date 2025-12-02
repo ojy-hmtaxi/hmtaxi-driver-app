@@ -321,13 +321,13 @@ def calendar_view():
                 today_vehicle_type = day_record.get('차종', '').strip()
         else:
             # 우선순위 기록이 없으면 기존 방식으로 첫 번째 차량번호 사용
-            if all_work_data:
-                for record in all_work_data:
-                    if today_day_str in record:
+        if all_work_data:
+            for record in all_work_data:
+                if today_day_str in record:
                         vehicle_num = record.get('차량번호', '').strip()
                         if vehicle_num:
                             today_vehicle = vehicle_num
-                            today_vehicle_type = record.get('차종', '').strip()
+                        today_vehicle_type = record.get('차종', '').strip()
                             break
 
     # 이전 달/다음 달 계산
