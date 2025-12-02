@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}로그인 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-box">
+        <img src="{{ url_for('static', filename='images/logo_HMtaxi.png') }}" alt="회사 로고" class="login-logo">
+        <h1>근무 관리 시스템</h1>
+        <h2>로그인</h2>
+        
+        <form method="POST" action="{{ url_for('login') }}" class="login-form">
+            <div class="form-group">
+                <label for="employee_id">사번</label>
+                <input type="text" 
+                       id="employee_id" 
+                       name="employee_id" 
+                       placeholder="사번을 입력하세요" 
+                       maxlength="4" 
+                       pattern="[0-9]{4}" 
+                       required 
+                       autocomplete="off">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">비밀번호</label>
+                <input type="password" 
+                       id="password" 
+                       name="password" 
+                       placeholder="비밀번호를 입력하세요" 
+                       maxlength="4" 
+                       pattern="[0-9]{4}" 
+                       required 
+                       autocomplete="off">
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-block">로그인</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
