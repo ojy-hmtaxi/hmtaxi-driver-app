@@ -177,6 +177,10 @@ def login():
             session['employee_id'] = employee_id
             session['name'] = user.get('name', '')
             
+            # 로그인 활동 로깅
+            user_name = user.get('name', '')
+            print(f"[ACTIVITY] user 로그인 - 사번: {employee_id}, 이름: {user_name}")
+            
             # 기본 비밀번호인 경우 비밀번호 변경 페이지로
             if error == "password_change_required":
                 return redirect(url_for('change_password_route'))
@@ -190,6 +194,13 @@ def login():
 @app.route('/logout')
 def logout():
     """로그아웃"""
+    employee_id = session.get('employee_id', '')
+    user_name = session.get('name', '')
+    
+    # 로그아웃 활동 로깅
+    if employee_id:
+        print(f"[ACTIVITY] user 로그아웃 - 사번: {employee_id}, 이름: {user_name}")
+    
     session.clear()
     flash('로그아웃되었습니다.', 'info')
     return redirect(url_for('login'))
@@ -431,6 +442,12 @@ def work_start():
         if success:
             # 캐시 무효화 (근무 데이터 업데이트됨)
             work_data_cache.clear_pattern(f"work_data:{employee_id}:{month_name}")
+            
+            # 근무준비 완료 활동 로깅
+            user_info = get_user_by_id(employee_id)
+            user_name = user_info.get('name', '') if user_info else ''
+            print(f"[ACTIVITY] user 근무준비 완료 - 사번: {employee_id}, 이름: {user_name}, 날짜: {year}/{month}/{day}, 차량: {vehicle_number}")
+            
             # 근무응원 페이지로 리다이렉트
             return redirect(url_for('work_thanks'))
         else:
@@ -764,6 +781,13 @@ def work_end_step2():
         if success:
             # 캐시 무효화 (매출 데이터 업데이트됨)
             sales_data_cache.clear_pattern(f"sales_summary:{employee_id}:{month_name}")
+            
+            # 근무종료 완료 활동 로깅
+            user_name = user.get('name', '') if user else ''
+            vehicle_number = step1_data.get('vehicle_number', '')
+            # lookup_date는 근무준비를 시작한 날짜 (운행일과 동일)
+            print(f"[ACTIVITY] user 근무종료 완료 - 사번: {employee_id}, 이름: {user_name}, 날짜: {year}/{month}/{day}, 차량: {vehicle_number}")
+            
             # 세션에서 1단계 데이터 제거
             session.pop('work_end_step1', None)
             # 감사 페이지로 이동
