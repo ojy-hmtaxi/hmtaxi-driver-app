@@ -452,9 +452,26 @@ def update_work_stats(worksheet, row_num, header, employee_id):
             work_days_col = header.index('근무일수') + 1
             absent_days_col = header.index('결근일수') + 1
             
-            # 업데이트
-            worksheet.update_cell(row_num, work_days_col, work_count)
-            worksheet.update_cell(row_num, absent_days_col, absent_count)
+            # 업데이트 (보호된 셀인 경우 오류 무시)
+            try:
+                worksheet.update_cell(row_num, work_days_col, work_count)
+            except Exception as e:
+                # 보호된 셀이거나 권한이 없는 경우 무시
+                error_msg = str(e)
+                if 'protected' in error_msg.lower() or 'permission' in error_msg.lower():
+                    print(f"Warning: '근무일수' 셀이 보호되어 있어 업데이트를 건너뜁니다.")
+                else:
+                    print(f"Warning: '근무일수' 업데이트 실패: {e}")
+            
+            try:
+                worksheet.update_cell(row_num, absent_days_col, absent_count)
+            except Exception as e:
+                # 보호된 셀이거나 권한이 없는 경우 무시
+                error_msg = str(e)
+                if 'protected' in error_msg.lower() or 'permission' in error_msg.lower():
+                    print(f"Warning: '결근일수' 셀이 보호되어 있어 업데이트를 건너뜁니다.")
+                else:
+                    print(f"Warning: '결근일수' 업데이트 실패: {e}")
         except ValueError:
             # 컬럼이 없으면 스킵
             pass
