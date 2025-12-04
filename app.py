@@ -631,16 +631,21 @@ def work_end_step2():
     """근무종료 2단계 페이지"""
     employee_id = session.get('employee_id')
     current_date = get_kst_now()
-    year = current_date.year
-    month = current_date.month
-    day = current_date.day
-    month_name = config.MONTHS[month - 1]
+    month_name = config.MONTHS[current_date.month - 1]
     
     # 1단계 데이터 확인
     step1_data = session.get('work_end_step1')
     if not step1_data:
         flash('먼저 1단계를 완료해주세요.', 'error')
         return redirect(url_for('work_end'))
+    
+    # 운행시작 정보 조회 (필요 시 하루 전 데이터 사용) - 운행일 표시용
+    work_start_info, lookup_date, lookup_month_name, lookup_day = get_work_start_info_with_fallback(employee_id, current_date)
+    
+    # 운행일은 lookup_date 사용 (근무준비를 시작한 날짜)
+    year = lookup_date.year
+    month = lookup_date.month
+    day = lookup_date.day
     
     if request.method == 'POST':
         # 2단계 폼 데이터 가져오기
