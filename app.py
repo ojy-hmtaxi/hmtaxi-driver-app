@@ -720,7 +720,7 @@ def work_end_step2():
             '카드운임': card_fare,
             '통행료': toll_fee,
             '연료비': fuel_cost,
-            '연료사용량': fuel_usage,
+            '연료충전량': fuel_usage,
             '특기사항': step1_data.get('special_notes', '')
         }
         
