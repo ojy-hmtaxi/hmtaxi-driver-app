@@ -501,7 +501,8 @@ def get_all_months_aggregated_data(employee_id):
             # 첫 번째 행의 데이터를 기본으로 사용
             first_record = all_records[0]
             for key, value in first_record.items():
-                if key not in ['근무일수', '결근일수']:
+                # 근무일수, 결근일수, 인정일수는 별도로 계산/처리하므로 제외
+                if key not in ['근무일수', '결근일수', '인정일수']:
                     aggregated[key] = value
             
             # 근무일수와 결근일수 합산
