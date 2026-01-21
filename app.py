@@ -274,8 +274,8 @@ def calendar_view():
     work_status = {}
     record_for_day = {}
     if all_work_data:
-        # 상태 우선순위: O(근무) > X(결근) > R(예정일) > /(휴무일)
-        status_priority = {'O': 4, 'X': 3, 'R': 2, '/': 1}
+        # 상태 우선순위: O(근무) > X(결근) > R(예정일) > H(공휴일) > /(휴무일)
+        status_priority = {'O': 5, 'X': 4, 'R': 3, 'H': 2, '/': 1}
         
         for day in range(1, 32):
             day_str = str(day)
@@ -290,11 +290,11 @@ def calendar_view():
                     if not status_raw:  # 빈 값은 스킵
                         continue
                     
-                    # 대소문자 구분 없이 처리 (O, X, R은 대문자로, /는 그대로)
-                    status = status_raw.upper() if status_raw.upper() in ['O', 'X', 'R'] else status_raw
+                    # 대소문자 구분 없이 처리 (O, X, R, H는 대문자로, /는 그대로)
+                    status = status_raw.upper() if status_raw.upper() in ['O', 'X', 'R', 'H'] else status_raw
                     
                     # 유효한 상태인 경우 우선순위 확인
-                    if status in ['O', 'X', 'R', '/']:
+                    if status in ['O', 'X', 'R', 'H', '/']:
                         priority = status_priority.get(status, 0)
                         if priority > best_priority:
                             best_priority = priority
@@ -464,8 +464,8 @@ def work_start():
     assigned_vehicle_type = None
     day_str = str(day)
     if all_work_data:
-        # 상태 우선순위: O(근무) > X(결근) > R(예정일) > /(휴무일)
-        status_priority = {'O': 4, 'X': 3, 'R': 2, '/': 1}
+        # 상태 우선순위: O(근무) > X(결근) > R(예정일) > H(공휴일) > /(휴무일)
+        status_priority = {'O': 5, 'X': 4, 'R': 3, 'H': 2, '/': 1}
         best_priority = 0
         best_record = None
         
@@ -475,11 +475,11 @@ def work_start():
                 if not status_raw:  # 빈 값은 스킵
                     continue
                 
-                # 대소문자 구분 없이 처리 (O, X, R은 대문자로, /는 그대로)
-                status = status_raw.upper() if status_raw.upper() in ['O', 'X', 'R'] else status_raw
+                # 대소문자 구분 없이 처리 (O, X, R, H는 대문자로, /는 그대로)
+                status = status_raw.upper() if status_raw.upper() in ['O', 'X', 'R', 'H'] else status_raw
                 
                 # 유효한 상태인 경우 우선순위 확인
-                if status in ['O', 'X', 'R', '/']:
+                if status in ['O', 'X', 'R', 'H', '/']:
                     priority = status_priority.get(status, 0)
                     if priority > best_priority:
                         best_priority = priority
@@ -578,8 +578,8 @@ def work_end():
     assigned_vehicle_type = None
     day_str = str(lookup_day)
     if all_work_data:
-        # 상태 우선순위: O(근무) > X(결근) > R(예정일) > /(휴무일)
-        status_priority = {'O': 4, 'X': 3, 'R': 2, '/': 1}
+        # 상태 우선순위: O(근무) > X(결근) > R(예정일) > H(공휴일) > /(휴무일)
+        status_priority = {'O': 5, 'X': 4, 'R': 3, 'H': 2, '/': 1}
         best_priority = 0
         best_record = None
         
@@ -589,11 +589,11 @@ def work_end():
                 if not status_raw:  # 빈 값은 스킵
                     continue
                 
-                # 대소문자 구분 없이 처리 (O, X, R은 대문자로, /는 그대로)
-                status = status_raw.upper() if status_raw.upper() in ['O', 'X', 'R'] else status_raw
+                # 대소문자 구분 없이 처리 (O, X, R, H는 대문자로, /는 그대로)
+                status = status_raw.upper() if status_raw.upper() in ['O', 'X', 'R', 'H'] else status_raw
                 
                 # 유효한 상태인 경우 우선순위 확인
-                if status in ['O', 'X', 'R', '/']:
+                if status in ['O', 'X', 'R', 'H', '/']:
                     priority = status_priority.get(status, 0)
                     if priority > best_priority:
                         best_priority = priority

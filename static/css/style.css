@@ -477,6 +477,10 @@ body {
     background-color: #b6d7f0;
 }
 
+.calendar-day.public-holiday-day {
+    background-color: #E1BEE7;
+}
+
 .calendar-day.holiday-day {
     background-color: #fab3a7;
 }
@@ -525,9 +529,14 @@ body {
     color: #0c5460;
 }
 
-.work-status.holiday {
+.work-status.off {
     background-color: #fab3a7;
     color: #e65100;
+}
+
+.work-status.holiday {
+    background-color: #E1BEE7;
+    color: #6A1B9A;
 }
 
 .work-status.today {
@@ -538,9 +547,9 @@ body {
 .legend {
     display: flex;
     justify-content: center;
-    gap: 20px;
+    gap: 10px;
     margin-bottom: 20px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
 .legend-item {
@@ -1144,11 +1153,16 @@ body {
     }
     
     .day-number {
-        font-size: 12px;
+        font-size: 14px;
     }
     
     .work-status {
-        font-size: 12px;
+        font-size: 14px;
+        padding: 1px 3px;
+    }
+    
+    .legend {
+        gap: 15px;
     }
     
     .summary {

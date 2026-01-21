@@ -56,7 +56,7 @@
                 {% for week in calendar %}
                 <tr>
                     {% for day in week %}
-                    <td class="calendar-day {% if day == 0 %}empty{% endif %} {% if loop.index0 == 0 and day != 0 %}sunday{% endif %} {% if day == current_date.day and month == current_date.month and year == current_date.year %}today{% endif %} {% if day in work_status %}{% if work_status[day] == 'O' %}work-day{% elif work_status[day] == 'X' %}absent-day{% elif work_status[day] == 'R' %}scheduled-day{% elif work_status[day] == '/' %}holiday-day{% endif %}{% endif %}">
+                    <td class="calendar-day {% if day == 0 %}empty{% endif %} {% if loop.index0 == 0 and day != 0 %}sunday{% endif %} {% if day == current_date.day and month == current_date.month and year == current_date.year %}today{% endif %} {% if day in work_status %}{% if work_status[day] == 'O' %}work-day{% elif work_status[day] == 'X' %}absent-day{% elif work_status[day] == 'R' %}scheduled-day{% elif work_status[day] == 'H' %}public-holiday-day{% elif work_status[day] == '/' %}holiday-day{% endif %}{% endif %}">
                         {% if day != 0 %}
                             <div class="day-number">{{ day }}</div>
                             {% if day == current_date.day and month == current_date.month and year == current_date.year %}
@@ -81,7 +81,10 @@
                 <span class="work-status scheduled">예정일</span>
             </div>
             <div class="legend-item">
-                <span class="work-status holiday">휴무일</span>
+                <span class="work-status off">휴무일</span>
+            </div>
+            <div class="legend-item">
+                <span class="work-status holiday">공휴일</span>
             </div>
             <div class="legend-item">
                 <span class="work-status today">오늘</span>
