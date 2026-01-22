@@ -29,11 +29,27 @@ document.addEventListener('DOMContentLoaded', function() {
     // 폼 제출 확인
     const forms = document.querySelectorAll('form');
     forms.forEach(form => {
+        let loadingInterval = null;
+        
         form.addEventListener('submit', function(e) {
             const submitButton = form.querySelector('button[type="submit"]');
             if (submitButton) {
                 submitButton.disabled = true;
-                submitButton.textContent = '처리 중...';
+                const originalText = submitButton.textContent;
+                
+                // 점진적으로 늘어나는 점 애니메이션
+                let dotCount = 0;
+                loadingInterval = setInterval(function() {
+                    dotCount = (dotCount % 3) + 1;
+                    submitButton.textContent = '처리 중' + '.'.repeat(dotCount);
+                }, 500); // 0.5초마다 업데이트
+            }
+        });
+        
+        // 페이지 언로드 시 인터벌 정리
+        window.addEventListener('beforeunload', function() {
+            if (loadingInterval) {
+                clearInterval(loadingInterval);
             }
         });
     });

@@ -158,6 +158,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 확인 버튼 - 폼 제출
     confirmBtn.addEventListener('click', function() {
+        // 버튼 비활성화 및 처리 중 애니메이션 시작
+        confirmBtn.disabled = true;
+        let dotCount = 0;
+        const originalText = confirmBtn.textContent;
+        const loadingInterval = setInterval(function() {
+            dotCount = (dotCount % 3) + 1;
+            confirmBtn.textContent = '처리 중' + '.'.repeat(dotCount);
+        }, 500); // 0.5초마다 업데이트
+        
+        // 폼 제출
         form.submit();
     });
     
