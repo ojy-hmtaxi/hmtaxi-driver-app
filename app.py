@@ -78,7 +78,8 @@ from utils.google_sheets import (
     get_user_by_id,
     add_sales_record,
     get_today_work_start_info,
-    get_user_sales_summary
+    get_user_sales_summary,
+    has_sales_record_for_date
 )
 import pandas as pd
 
@@ -320,8 +321,82 @@ def calendar_view():
     if year == current_date.year and month == current_date.month:
         today_day = current_date.day
         today_day_str = str(today_day)
+        
+        # 근무종료 버튼 활성화 조건:
+        # 1. 오늘 날짜에 O가 있거나
+        # 2. 어제 날짜에 O가 있고, 어제 날짜에 근무시작 정보가 있으며, sales_DB_2026에 기록이 없는 경우
+        #    (지각으로 어제 근무를 시작했지만 아직 종료하지 않은 경우)
         can_end_work = work_status.get(today_day) == 'O'
+        
+        # 어제 날짜 확인
+        if not can_end_work:
+            yesterday_date = current_date - timedelta(days=1)
+            yesterday_month_name = config.MONTHS[yesterday_date.month - 1]
+            yesterday_day = yesterday_date.day
+            
+            # 어제 날짜의 근무 데이터 확인 (같은 월이거나 다른 월)
+            yesterday_info = None
+            if yesterday_date.year == year and yesterday_date.month == month:
+                # 같은 월인 경우
+                if work_status.get(yesterday_day) == 'O':
+                    yesterday_info = get_today_work_start_info(employee_id, yesterday_month_name, yesterday_day)
+            else:
+                # 다른 월인 경우 (월이 바뀐 경우)
+                yesterday_all_work_data = get_all_user_work_data_cached(employee_id, yesterday_month_name)
+                if yesterday_all_work_data:
+                    yesterday_day_str = str(yesterday_day)
+                    for record in yesterday_all_work_data:
+                        if yesterday_day_str in record:
+                            status_raw = str(record.get(yesterday_day_str, '')).strip().upper()
+                            if status_raw == 'O':
+                                yesterday_info = get_today_work_start_info(employee_id, yesterday_month_name, yesterday_day)
+                                break
+            
+            # 어제 날짜에 근무시작 정보가 있고, sales_DB_2026에 기록이 없으면 근무종료 버튼 활성화
+            if yesterday_info and yesterday_info.get('work_date'):
+                # 운행일은 어제 날짜(근무예정일)를 사용
+                operation_date = yesterday_date.strftime('%Y/%m/%d')
+                # sales_DB_2026에 해당 날짜의 기록이 없는 경우에만 활성화
+                if not has_sales_record_for_date(employee_id, yesterday_month_name, operation_date):
+                    can_end_work = True
+        
+        # 근무시작 버튼 활성화 조건:
+        # 1. 오늘 날짜에 O가 없는 경우
+        # 2. 어제 날짜에 진행 중인 근무가 있으면 비활성화 (지각으로 어제 근무를 시작했지만 아직 종료하지 않은 경우)
         can_start_work = work_status.get(today_day) != 'O'
+        
+        # 어제 날짜에 진행 중인 근무가 있는지 확인
+        if can_start_work:
+            yesterday_date = current_date - timedelta(days=1)
+            yesterday_month_name = config.MONTHS[yesterday_date.month - 1]
+            yesterday_day = yesterday_date.day
+            
+            # 어제 날짜에 근무시작 정보가 있는지 확인
+            yesterday_info = None
+            if yesterday_date.year == year and yesterday_date.month == month:
+                # 같은 월인 경우
+                if work_status.get(yesterday_day) == 'O':
+                    yesterday_info = get_today_work_start_info(employee_id, yesterday_month_name, yesterday_day)
+            else:
+                # 다른 월인 경우 (월이 바뀐 경우)
+                yesterday_all_work_data = get_all_user_work_data_cached(employee_id, yesterday_month_name)
+                if yesterday_all_work_data:
+                    yesterday_day_str = str(yesterday_day)
+                    for record in yesterday_all_work_data:
+                        if yesterday_day_str in record:
+                            status_raw = str(record.get(yesterday_day_str, '')).strip().upper()
+                            if status_raw == 'O':
+                                yesterday_info = get_today_work_start_info(employee_id, yesterday_month_name, yesterday_day)
+                                break
+            
+            # 어제 날짜에 근무시작 정보가 있고, sales_DB_2026에 기록이 없으면 근무시작 버튼 비활성화
+            if yesterday_info and yesterday_info.get('work_date'):
+                # 운행일은 어제 날짜(근무예정일)를 사용 (실제 시작 시간이 아닌)
+                # 어제 날짜에 Google Sheets에 'O'가 기록된 날짜가 운행일이므로
+                operation_date = yesterday_date.strftime('%Y/%m/%d')
+                # sales_DB_2026에 해당 날짜의 기록이 있는지 확인
+                if not has_sales_record_for_date(employee_id, yesterday_month_name, operation_date):
+                    can_start_work = False
         
         # 오늘 날짜에 배정된 차량번호와 차종 찾기 (근무 준비 완료 여부와 무관하게)
         day_record = record_for_day.get(today_day)
@@ -699,19 +774,15 @@ def work_end_step2():
         # 운행시작 정보 조회 (필요 시 하루 전 데이터 사용)
         work_start_info, start_lookup_date, start_month_name, start_day = get_work_start_info_with_fallback(employee_id, current_date)
         
-        # 운행일 결정: 운행시작일시의 날짜 사용 (없으면 현재 날짜)
-        work_start_datetime = None
-        operation_date = current_date.strftime('%Y/%m/%d')  # 기본값: 현재 날짜
+        # 운행일 결정: lookup_date 사용 (근무예정일, 즉 Google Sheets에 'O'가 기록된 날짜)
+        # lookup_date는 get_work_start_info_with_fallback에서 반환된 날짜로,
+        # 근무시작 시 selected_date로 설정한 날짜와 동일함
+        operation_date = start_lookup_date.strftime('%Y/%m/%d')
         
+        # 운행시작일시는 work_start_info에서 가져오기 (근무시간 계산용)
+        work_start_datetime = None
         if work_start_info and work_start_info.get('work_date'):
             work_start_datetime = work_start_info.get('work_date')
-            # 운행시작일시에서 날짜 부분만 추출
-            try:
-                start_dt = datetime.strptime(work_start_datetime, '%Y/%m/%d %H:%M:%S')
-                operation_date = start_dt.strftime('%Y/%m/%d')
-            except Exception as e:
-                print(f"Error parsing work_start_datetime for operation_date: {e}")
-                # 파싱 실패 시 기본값 사용
         
         # sales_DB_2026에 저장할 데이터 구성
         sales_data = {

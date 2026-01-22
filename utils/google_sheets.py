@@ -844,3 +844,61 @@ def get_user_sales_summary(employee_id, month_sheet_name):
         traceback.print_exc()
         return {'total_revenue': 0, 'total_fuel_cost': 0}
 
+def has_sales_record_for_date(employee_id, month_sheet_name, operation_date):
+    """sales_DB_2026에서 특정 날짜에 해당 사번의 매출 기록이 있는지 확인
+    
+    Args:
+        employee_id: 사번
+        month_sheet_name: 월별 시트 이름 (예: '11월')
+        operation_date: 운행일 (형식: 'YYYY/MM/DD' 또는 'YYYY-MM-DD')
+    
+    Returns:
+        bool: 기록이 있으면 True, 없으면 False
+    """
+    try:
+        worksheet = get_sales_worksheet(month_sheet_name)
+        
+        # 헤더 가져오기
+        header = worksheet.row_values(1)
+        header = [str(h).strip() for h in header]
+        
+        # 모든 데이터 가져오기
+        all_values = worksheet.get_all_values()
+        
+        if len(all_values) < 2:  # 헤더만 있거나 데이터가 없음
+            return False
+        
+        # 컬럼 인덱스 찾기
+        try:
+            employee_id_col_idx = header.index('사번')
+            operation_date_col_idx = header.index('운행일')
+        except ValueError:
+            return False
+        
+        # operation_date 형식 정규화 (YYYY/MM/DD 또는 YYYY-MM-DD)
+        if '/' in operation_date:
+            normalized_date = operation_date
+        elif '-' in operation_date:
+            normalized_date = operation_date.replace('-', '/')
+        else:
+            normalized_date = operation_date
+        
+        # 데이터 행 확인 (헤더 제외, 인덱스 1부터)
+        for row in all_values[1:]:
+            if len(row) <= max(employee_id_col_idx, operation_date_col_idx):
+                continue
+            
+            # 사번 확인
+            row_employee_id = str(row[employee_id_col_idx]).strip()
+            if row_employee_id != str(employee_id):
+                continue
+            
+            # 운행일 확인
+            row_operation_date = str(row[operation_date_col_idx]).strip()
+            if row_operation_date == normalized_date:
+                return True
+        
+        return False
+    except Exception as e:
+        print(f"Error checking sales record for date: {e}")
+        return False
