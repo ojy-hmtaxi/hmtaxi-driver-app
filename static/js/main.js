@@ -26,31 +26,37 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     });
     
-    // 폼 제출 확인
+    // 폼 제출 확인 및 처리 중 애니메이션
     const forms = document.querySelectorAll('form');
+    const loadingIntervals = new Map(); // 각 폼별 인터벌 저장
+    
     forms.forEach(form => {
-        let loadingInterval = null;
-        
         form.addEventListener('submit', function(e) {
             const submitButton = form.querySelector('button[type="submit"]');
             if (submitButton) {
                 submitButton.disabled = true;
                 const originalText = submitButton.textContent;
                 
+                // 즉시 첫 번째 상태 표시
+                submitButton.textContent = '처리 중.';
+                
                 // 점진적으로 늘어나는 점 애니메이션
-                let dotCount = 0;
-                loadingInterval = setInterval(function() {
+                let dotCount = 1;
+                const intervalId = setInterval(function() {
                     dotCount = (dotCount % 3) + 1;
                     submitButton.textContent = '처리 중' + '.'.repeat(dotCount);
                 }, 500); // 0.5초마다 업데이트
+                
+                // 인터벌 ID 저장 (나중에 정리하기 위해)
+                loadingIntervals.set(form, intervalId);
             }
         });
-        
-        // 페이지 언로드 시 인터벌 정리
-        window.addEventListener('beforeunload', function() {
-            if (loadingInterval) {
-                clearInterval(loadingInterval);
-            }
+    });
+    
+    // 페이지 언로드 시 모든 인터벌 정리
+    window.addEventListener('beforeunload', function() {
+        loadingIntervals.forEach(intervalId => {
+            clearInterval(intervalId);
         });
     });
 });

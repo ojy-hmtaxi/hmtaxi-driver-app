@@ -517,8 +517,8 @@ def work_start():
             'special_notes': special_notes
         }
         
-        # 근무 상태 업데이트 및 메모 추가 (선택한 차량번호 전달)
-        success = update_work_status(employee_id, day, month_name, 'O', work_details=work_details, vehicle_number=vehicle_number)
+        # 근무 상태 업데이트 및 메모 추가 (선택한 차량번호와 근무유형 전달)
+        success = update_work_status(employee_id, day, month_name, 'O', work_details=work_details, vehicle_number=vehicle_number, work_type=work_type)
         
         if success:
             # 캐시 무효화 (근무 데이터 업데이트됨)

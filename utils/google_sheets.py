@@ -225,7 +225,7 @@ def get_all_user_work_data(employee_id, month_sheet_name):
         print(f"Error getting all user work data: {e}")
         return None
 
-def update_work_status(employee_id, date, month_sheet_name, status='O', work_details=None, vehicle_number=None):
+def update_work_status(employee_id, date, month_sheet_name, status='O', work_details=None, vehicle_number=None, work_type=None):
     """근무 상태 업데이트 (O 또는 X) 및 메모 추가
     
     Args:
@@ -235,6 +235,7 @@ def update_work_status(employee_id, date, month_sheet_name, status='O', work_det
         status: 상태 ('O', 'X' 등)
         work_details: 근무 상세 정보 (딕셔너리)
         vehicle_number: 차량번호 (선택사항, 지정하면 해당 차량의 행을 찾음)
+        work_type: 근무유형 (선택사항, 지정하면 해당 근무유형의 행을 찾음)
     """
     try:
         worksheet = get_worksheet(month_sheet_name)
@@ -259,6 +260,14 @@ def update_work_status(employee_id, date, month_sheet_name, status='O', work_det
             except ValueError:
                 pass
         
+        # 근무유형 컬럼 찾기 (work_type이 제공된 경우)
+        work_type_col = None
+        if work_type:
+            try:
+                work_type_col = header.index('근무유형') + 1
+            except ValueError:
+                pass
+        
         # 날짜 컬럼 찾기 (숫자로 변환하여 찾기)
         date_col = None
         date_str = str(date).strip()
@@ -270,7 +279,7 @@ def update_work_status(employee_id, date, month_sheet_name, status='O', work_det
         if date_col is None:
             return False
         
-        # 해당 사번의 행 찾기 (차량번호가 있으면 차량번호도 일치하는 행 찾기)
+        # 해당 사번의 행 찾기 (차량번호와 근무유형이 있으면 모두 일치하는 행 찾기)
         for i, row in enumerate(all_values[1:], start=2):
             if len(row) >= employee_id_col:
                 # 사번 일치 확인
@@ -284,6 +293,17 @@ def update_work_status(employee_id, date, month_sheet_name, status='O', work_det
                                 continue
                     elif vehicle_number:
                         # 차량번호 컬럼이 없으면 첫 번째 일치하는 행 사용
+                        pass
+                    
+                    # 근무유형이 제공된 경우, 근무유형도 일치하는지 확인
+                    if work_type and work_type_col:
+                        if len(row) >= work_type_col:
+                            row_work_type = str(row[work_type_col - 1]).strip()
+                            if row_work_type != str(work_type).strip():
+                                # 근무유형이 일치하지 않으면 다음 행으로
+                                continue
+                    elif work_type:
+                        # 근무유형 컬럼이 없으면 첫 번째 일치하는 행 사용
                         pass
                     
                     # 상태 업데이트
