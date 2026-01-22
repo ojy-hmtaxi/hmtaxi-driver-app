@@ -651,6 +651,63 @@ body {
     padding: 10px;
     background-color: #f8f9fa;
     border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+.date-selector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.date-btn {
+    width: 60px;
+    height: 60px;
+    border: none;
+    background-color: white;
+    color: #007bff;
+    font-size: 25px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+    flex-shrink: 0;
+    padding: 0;
+}
+
+.date-btn i {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.date-btn:hover {
+    background-color: #007bff;
+    color: white;
+    transform: scale(1.1);
+}
+
+.date-btn:hover i {
+    color: white;
+}
+
+.date-btn:active {
+    transform: scale(0.95);
+}
+
+.date-display-selector {
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+    padding: 10px 20px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    min-width: 180px;
+    text-align: center;
+    border: 1px solid #ddd;
 }
 
 .work-type-toggle {
@@ -1186,6 +1243,25 @@ body {
     
     .work-prepare-container {
         padding: 15px;
+    }
+    
+    .date-selector {
+        gap: 10px;
+    }
+    
+    .date-btn {
+        width: 60px;
+        height: 60px;
+        border: none;
+        font-size: 25px;
+        font-weight: bold;
+    }
+    
+    .date-display-selector {
+        font-size: 16px;
+        padding: 8px 15px;
+        min-width: 260px;
+        border: 1px solid #ddd;
     }
     
     .vehicle-status-toggle {

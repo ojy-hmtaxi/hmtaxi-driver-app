@@ -417,6 +417,12 @@ def work_start():
         if selected_date:
             year, month, day = map(int, selected_date.split('-'))
             month_name = config.MONTHS[month - 1]
+        else:
+            # selected_date가 없으면 현재 날짜 사용
+            year = current_date.year
+            month = current_date.month
+            day = current_date.day
+            month_name = config.MONTHS[month - 1]
         
         # 폼 데이터 가져오기
         vehicle_number = request.form.get('vehicle_number', '')  # hidden input에서 가져옴

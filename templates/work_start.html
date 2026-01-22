@@ -11,8 +11,6 @@
     
     <div class="work-prepare-box">
         <form method="POST" action="{{ url_for('work_start') }}" class="work-prepare-form" id="workPrepareForm">
-            <input type="hidden" name="selected_date" value="{{ year }}-{{ month }}-{{ day }}">
-            
             <div class="form-group">
                 <label>운행 차량</label>
                 {% if assigned_vehicle %}
@@ -26,6 +24,19 @@
                     </div>
                     <input type="hidden" name="vehicle_number" value="">
                 {% endif %}
+            </div>
+
+            <div class="form-group">
+                <label>근무예정일 확인</label>
+                <div class="warning-message">
+                    ※ 야간 운행시작일이 근무예정일보다 늦은 경우,<br>날짜를 하루 전으로 설정해 주세요.
+                </div>
+                <div class="date-selector">
+                    <button type="button" class="date-btn date-btn-minus" id="dateMinusBtn"><i class="bi bi-dash-circle-fill"></i></button>
+                    <div class="date-display-selector" id="selectedDateDisplay">{{ year }} / {{ month }} / {{ day }}</div>
+                    <button type="button" class="date-btn date-btn-plus" id="datePlusBtn"><i class="bi bi-plus-circle-fill"></i></button>
+                </div>
+                <input type="hidden" name="selected_date" id="selectedDateInput" value="{{ year }}-{{ month }}-{{ day }}">
             </div>
             
             <div class="form-group">
@@ -97,6 +108,37 @@ document.addEventListener('DOMContentLoaded', function() {
             statusButtons.forEach(b => b.classList.remove('status-active'));
             this.classList.add('status-active');
         });
+    });
+    
+    // 날짜 선택 기능
+    const dateMinusBtn = document.getElementById('dateMinusBtn');
+    const datePlusBtn = document.getElementById('datePlusBtn');
+    const selectedDateDisplay = document.getElementById('selectedDateDisplay');
+    const selectedDateInput = document.getElementById('selectedDateInput');
+    
+    // 초기 날짜 설정
+    const initialYear = parseInt('{{ year }}', 10);
+    const initialMonth = parseInt('{{ month }}', 10);
+    const initialDay = parseInt('{{ day }}', 10);
+    let currentDate = new Date(initialYear, initialMonth - 1, initialDay);
+    
+    function updateDateDisplay() {
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        
+        selectedDateDisplay.textContent = year + ' / ' + month + ' / ' + day;
+        selectedDateInput.value = year + '-' + month + '-' + day;
+    }
+    
+    dateMinusBtn.addEventListener('click', function() {
+        currentDate.setDate(currentDate.getDate() - 1);
+        updateDateDisplay();
+    });
+    
+    datePlusBtn.addEventListener('click', function() {
+        currentDate.setDate(currentDate.getDate() + 1);
+        updateDateDisplay();
     });
 });
 </script>
