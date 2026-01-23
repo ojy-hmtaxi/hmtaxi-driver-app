@@ -34,8 +34,16 @@ function showProgressBar() {
         return;
     }
     
-    if (!progressBar) initProgressBar();
-    if (!progressBar) return;
+    // 프로그레스 바 초기화 (반드시 먼저 실행)
+    if (!progressBar) {
+        initProgressBar();
+    }
+    
+    if (!progressBar || !progressCircle || !progressText) {
+        // 초기화가 완료되지 않았으면 재시도
+        setTimeout(showProgressBar, 10);
+        return;
+    }
     
     // 이전 인터벌 정리
     if (progressInterval) {
@@ -46,25 +54,38 @@ function showProgressBar() {
     // 초기값 설정
     currentProgress = 0;
     progressStartTime = Date.now(); // 시작 시간 기록
-    updateProgress(0); // 0%로 초기화
+    
+    // 프로그레스 바 표시
     progressBar.style.display = 'flex';
     
-    // 2초 동안 0% -> 90%까지 진행 (정확히 2초에 90% 도달)
-    // 90%를 2000ms에 걸쳐 진행하려면 약 22.22ms마다 1%씩 증가
-    const totalSteps = 90; // 0%에서 90%까지
+    // 즉시 0% 표시
+    updateProgress(0);
+    
+    // 2초 동안 0% -> 90%까지 진행
+    // 더 짧은 간격으로 업데이트하여 페이지 이동 전에도 업데이트 보장
     const duration = 2000; // 2초
-    const stepInterval = Math.max(16, Math.floor(duration / totalSteps)); // 최소 16ms (약 22ms)
+    const targetProgress = 90;
+    const startTime = Date.now();
+    const updateInterval = 50; // 50ms마다 업데이트 (더 자주 업데이트)
     
     progressInterval = setInterval(function() {
-        if (currentProgress < 90) {
-            currentProgress += 1;
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min((elapsed / duration) * targetProgress, targetProgress);
+        
+        const newProgress = Math.floor(progress);
+        if (newProgress !== currentProgress) {
+            currentProgress = newProgress;
             updateProgress(currentProgress);
-        } else {
-            // 90%에 도달하면 인터벌 정리
+        }
+        
+        if (progress >= targetProgress) {
+            // 90%에 도달
             clearInterval(progressInterval);
             progressInterval = null;
+            currentProgress = 90;
+            updateProgress(90);
         }
-    }, stepInterval);
+    }, updateInterval);
 }
 
 // 전역으로 노출 (다른 스크립트에서 사용 가능)
