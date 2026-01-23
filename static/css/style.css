@@ -1362,17 +1362,22 @@ body {
 
 .progress-circle {
     position: relative;
-    width: 120px;
-    height: 120px;
+    width: 90px;
+    height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .progress-ring {
     transform: rotate(-90deg);
+    width: 90px;
+    height: 90px;
 }
 
 .progress-ring-circle {
-    stroke-dasharray: 339.292;
-    stroke-dashoffset: 339.292;
+    stroke-dasharray: 257.5;
+    stroke-dashoffset: 257.5;
     transition: stroke-dashoffset 0.3s ease;
 }
 
@@ -1381,31 +1386,27 @@ body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 24px;
+    font-size: 20px;
     font-weight: bold;
     color: #007bff;
+    line-height: 1;
+    margin: 0;
+    padding: 0;
 }
 
 /* 모바일 스타일 */
 @media (max-width: 768px) {
     .progress-circle {
-        width: 100px;
-        height: 100px;
+        width: 90px;
+        height: 90px;
     }
     
     .progress-ring {
-        width: 100px;
-        height: 100px;
-    }
-    
-    .progress-ring-circle-bg,
-    .progress-ring-circle {
-        cx: 50;
-        cy: 50;
-        r: 44;
+        width: 90px;
+        height: 90px;
     }
     
     .progress-text {
-        font-size: 20px;
+        font-size: 18px;
     }
 }

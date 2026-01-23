@@ -14,7 +14,8 @@ function initProgressBar() {
         progressText = progressBar.querySelector('.progress-text');
         
         // 원의 둘레 계산 (2 * π * r)
-        const radius = 54;
+        // 90px 크기, 반지름 41 (중심 45에서 stroke-width 8 고려)
+        const radius = 41;
         const circumference = 2 * Math.PI * radius;
         
         // stroke-dasharray와 stroke-dashoffset 설정
