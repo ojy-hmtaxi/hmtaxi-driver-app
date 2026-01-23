@@ -37,20 +37,23 @@ function showProgressBar() {
     if (!progressBar) initProgressBar();
     if (!progressBar) return;
     
-    currentProgress = 0;
-    progressStartTime = Date.now(); // 시작 시간 기록
-    progressBar.style.display = 'flex';
-    
-    // 프로그레스 애니메이션 시작
+    // 이전 인터벌 정리
     if (progressInterval) {
         clearInterval(progressInterval);
+        progressInterval = null;
     }
     
+    // 초기값 설정
+    currentProgress = 0;
+    progressStartTime = Date.now(); // 시작 시간 기록
+    updateProgress(0); // 0%로 초기화
+    progressBar.style.display = 'flex';
+    
     // 2초 동안 0% -> 90%까지 진행 (정확히 2초에 90% 도달)
-    // 90%를 2000ms에 걸쳐 진행하려면 약 22.5ms마다 1%씩 증가
+    // 90%를 2000ms에 걸쳐 진행하려면 약 22.22ms마다 1%씩 증가
     const totalSteps = 90; // 0%에서 90%까지
     const duration = 2000; // 2초
-    const stepInterval = duration / totalSteps; // 약 22.22ms
+    const stepInterval = Math.max(16, Math.floor(duration / totalSteps)); // 최소 16ms (약 22ms)
     
     progressInterval = setInterval(function() {
         if (currentProgress < 90) {
@@ -80,6 +83,7 @@ function updateProgress(percent) {
 }
 
 function hideProgressBar() {
+    // 인터벌 정리
     if (progressInterval) {
         clearInterval(progressInterval);
         progressInterval = null;
@@ -89,20 +93,50 @@ function hideProgressBar() {
     const elapsedTime = progressStartTime ? Date.now() - progressStartTime : 0;
     const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
     
-    // 남은 시간이 있으면 대기 후 100%로 완료 표시
-    setTimeout(function() {
-        // 100%로 완료 표시
-        updateProgress(100);
+    // 현재 진행률이 90% 미만이면 90%까지 빠르게 진행
+    if (currentProgress < 90) {
+        const stepsTo90 = 90 - currentProgress;
+        const fastStepInterval = Math.max(10, Math.floor(remainingTime / stepsTo90));
         
-        // 300ms 후 숨김
-        setTimeout(function() {
-            if (progressBar) {
-                progressBar.style.display = 'none';
+        const fastInterval = setInterval(function() {
+            if (currentProgress < 90) {
+                currentProgress += 1;
+                updateProgress(currentProgress);
+            } else {
+                clearInterval(fastInterval);
             }
-            currentProgress = 0;
-            progressStartTime = null;
-        }, 300);
-    }, remainingTime);
+        }, fastStepInterval);
+        
+        // 90%에 도달하거나 남은 시간이 지나면 100%로 완료
+        setTimeout(function() {
+            clearInterval(fastInterval);
+            updateProgress(100);
+            
+            // 300ms 후 숨김
+            setTimeout(function() {
+                if (progressBar) {
+                    progressBar.style.display = 'none';
+                }
+                currentProgress = 0;
+                progressStartTime = null;
+            }, 300);
+        }, remainingTime);
+    } else {
+        // 이미 90% 이상이면 바로 100%로 완료 표시
+        setTimeout(function() {
+            // 100%로 완료 표시
+            updateProgress(100);
+            
+            // 300ms 후 숨김
+            setTimeout(function() {
+                if (progressBar) {
+                    progressBar.style.display = 'none';
+                }
+                currentProgress = 0;
+                progressStartTime = null;
+            }, 300);
+        }, remainingTime);
+    }
 }
 
 // 페이지 전환 감지
