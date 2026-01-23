@@ -6,6 +6,8 @@ let progressCircle = null;
 let progressText = null;
 let progressInterval = null;
 let currentProgress = 0;
+let progressStartTime = null;
+let minDisplayTime = 2000; // 최소 표시 시간: 2초
 
 function initProgressBar() {
     progressBar = document.getElementById('pageProgressBar');
@@ -27,10 +29,16 @@ function initProgressBar() {
 }
 
 function showProgressBar() {
+    // 로그아웃 중이면 프로그레스 바 표시하지 않음
+    if (window.skipProgressBar) {
+        return;
+    }
+    
     if (!progressBar) initProgressBar();
     if (!progressBar) return;
     
     currentProgress = 0;
+    progressStartTime = Date.now(); // 시작 시간 기록
     progressBar.style.display = 'flex';
     
     // 프로그레스 애니메이션 시작
@@ -38,20 +46,32 @@ function showProgressBar() {
         clearInterval(progressInterval);
     }
     
-    // 점진적으로 진행률 증가 (0% -> 90%)
-    // 페이지 로드 완료 시 100%로 완료 표시
+    // 2초 동안 0% -> 90%까지 진행 (정확히 2초에 90% 도달)
+    // 90%를 2000ms에 걸쳐 진행하려면 약 22.5ms마다 1%씩 증가
+    const totalSteps = 90; // 0%에서 90%까지
+    const duration = 2000; // 2초
+    const stepInterval = duration / totalSteps; // 약 22.22ms
+    
     progressInterval = setInterval(function() {
         if (currentProgress < 90) {
-            currentProgress += 2;
+            currentProgress += 1;
             updateProgress(currentProgress);
+        } else {
+            // 90%에 도달하면 인터벌 정리
+            clearInterval(progressInterval);
+            progressInterval = null;
         }
-    }, 50);
+    }, stepInterval);
 }
+
+// 전역으로 노출 (다른 스크립트에서 사용 가능)
+window.showProgressBar = showProgressBar;
 
 function updateProgress(percent) {
     if (!progressCircle || !progressText) return;
     
-    const radius = 54;
+    // 90px 크기, 반지름 41
+    const radius = 41;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (percent / 100) * circumference;
     
@@ -65,15 +85,24 @@ function hideProgressBar() {
         progressInterval = null;
     }
     
-    // 100%로 완료 표시 후 숨김
-    updateProgress(100);
+    // 최소 표시 시간 확인
+    const elapsedTime = progressStartTime ? Date.now() - progressStartTime : 0;
+    const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
     
+    // 남은 시간이 있으면 대기 후 100%로 완료 표시
     setTimeout(function() {
-        if (progressBar) {
-            progressBar.style.display = 'none';
-        }
-        currentProgress = 0;
-    }, 300);
+        // 100%로 완료 표시
+        updateProgress(100);
+        
+        // 300ms 후 숨김
+        setTimeout(function() {
+            if (progressBar) {
+                progressBar.style.display = 'none';
+            }
+            currentProgress = 0;
+            progressStartTime = null;
+        }, 300);
+    }, remainingTime);
 }
 
 // 페이지 전환 감지
@@ -121,10 +150,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // 링크 클릭 시 프로그레스 바 표시
+    // 링크 클릭 시 프로그레스 바 표시 (로그아웃 링크 제외)
     document.addEventListener('click', function(e) {
         const link = e.target.closest('a');
         if (link && link.href && !link.href.startsWith('javascript:') && !link.href.startsWith('#')) {
+            // 로그아웃 링크는 제외 (모달이 표시되므로)
+            if (link.id === 'logoutBtn' || link.href.includes('/logout')) {
+                return;
+            }
+            
             // 같은 도메인 내 링크만
             try {
                 const linkUrl = new URL(link.href, window.location.origin);
@@ -139,9 +173,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// 페이지 언로드 시 프로그레스 바 표시
+// 페이지 언로드 시 프로그레스 바 표시 (로그아웃 제외)
 window.addEventListener('beforeunload', function() {
-    showProgressBar();
+    // 로그아웃 중이면 프로그레스 바 표시하지 않음
+    if (!window.skipProgressBar) {
+        showProgressBar();
+    }
 });
 
 // 근무시작 버튼 클릭 시 확인

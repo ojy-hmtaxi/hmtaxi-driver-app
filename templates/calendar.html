@@ -169,6 +169,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 확인 버튼 - 로그아웃 실행
     logoutConfirmBtn.addEventListener('click', function() {
+        // 프로그레스 바 표시 방지 (모달과 겹치지 않도록)
+        window.skipProgressBar = true;
         window.location.href = logoutUrl;
     });
     
