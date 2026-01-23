@@ -10,6 +10,8 @@ let currentProgress = 0;
 let progressStartTime = null;
 let minDisplayTime = 2000; // 최소 표시 시간: 2초
 let circumference = 0; // 전역으로 둘레 저장
+let isProgressBarActive = false; // 프로그레스 바가 활성화되어 있는지 추적
+let isHidingProgressBar = false; // 프로그레스 바를 숨기는 중인지 추적
 
 function initProgressBar() {
     progressBar = document.getElementById('pageProgressBar');
@@ -38,6 +40,16 @@ function showProgressBar() {
         return;
     }
     
+    // 이미 프로그레스 바가 활성화되어 있으면 중복 호출 방지
+    if (isProgressBarActive) {
+        return;
+    }
+    
+    // 프로그레스 바를 숨기는 중이면 무시
+    if (isHidingProgressBar) {
+        return;
+    }
+    
     // 프로그레스 바 초기화 (반드시 먼저 실행)
     if (!progressBar) {
         initProgressBar();
@@ -59,6 +71,9 @@ function showProgressBar() {
         progressAnimationFrame = null;
     }
     
+    // 활성화 플래그 설정
+    isProgressBarActive = true;
+    
     // 초기값 설정
     currentProgress = 0;
     progressStartTime = Date.now(); // 시작 시간 기록
@@ -78,29 +93,29 @@ function showProgressBar() {
     }
     
     // 2초 동안 0% -> 90%까지 진행
-    // requestAnimationFrame과 setInterval을 결합하여 모바일 호환성 향상
+    // requestAnimationFrame만 사용 (setInterval 제거하여 중복 업데이트 방지)
     const duration = 2000; // 2초
     const targetProgress = 90;
     const startTime = Date.now();
-    const updateInterval = 16; // ~60fps를 위한 16ms 간격
-    
-    let lastUpdateTime = startTime;
     
     function animate() {
+        // 프로그레스 바가 비활성화되었으면 중단
+        if (!isProgressBarActive) {
+            if (progressAnimationFrame) {
+                cancelAnimationFrame(progressAnimationFrame);
+                progressAnimationFrame = null;
+            }
+            return;
+        }
+        
         const now = Date.now();
         const elapsed = now - startTime;
+        const progress = Math.min((elapsed / duration) * targetProgress, targetProgress);
+        const newProgress = Math.floor(progress);
         
-        // 최소 16ms마다 업데이트 (60fps)
-        if (now - lastUpdateTime >= updateInterval) {
-            const progress = Math.min((elapsed / duration) * targetProgress, targetProgress);
-            const newProgress = Math.floor(progress);
-            
-            if (newProgress !== currentProgress) {
-                currentProgress = newProgress;
-                updateProgress(currentProgress);
-            }
-            
-            lastUpdateTime = now;
+        if (newProgress !== currentProgress) {
+            currentProgress = newProgress;
+            updateProgress(currentProgress);
         }
         
         if (elapsed < duration && currentProgress < targetProgress) {
@@ -112,25 +127,6 @@ function showProgressBar() {
             progressAnimationFrame = null;
         }
     }
-    
-    // setInterval을 백업으로 사용 (모바일 브라우저 호환성)
-    progressInterval = setInterval(function() {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min((elapsed / duration) * targetProgress, targetProgress);
-        const newProgress = Math.floor(progress);
-        
-        if (newProgress !== currentProgress) {
-            currentProgress = newProgress;
-            updateProgress(currentProgress);
-        }
-        
-        if (progress >= targetProgress) {
-            clearInterval(progressInterval);
-            progressInterval = null;
-            currentProgress = targetProgress;
-            updateProgress(targetProgress);
-        }
-    }, updateInterval);
     
     // requestAnimationFrame 시작
     progressAnimationFrame = requestAnimationFrame(animate);
@@ -160,10 +156,26 @@ function updateProgress(percent) {
 }
 
 function hideProgressBar() {
-    // 인터벌 정리
+    // 프로그레스 바가 활성화되어 있지 않으면 무시
+    if (!isProgressBarActive) {
+        return;
+    }
+    
+    // 이미 숨기는 중이면 무시
+    if (isHidingProgressBar) {
+        return;
+    }
+    
+    isHidingProgressBar = true;
+    
+    // 애니메이션 정리
     if (progressInterval) {
         clearInterval(progressInterval);
         progressInterval = null;
+    }
+    if (progressAnimationFrame) {
+        cancelAnimationFrame(progressAnimationFrame);
+        progressAnimationFrame = null;
     }
     
     // 최소 표시 시간 확인
@@ -175,18 +187,35 @@ function hideProgressBar() {
         const stepsTo90 = 90 - currentProgress;
         const fastStepInterval = Math.max(10, Math.floor(remainingTime / stepsTo90));
         
-        const fastInterval = setInterval(function() {
+        let fastAnimationFrame = null;
+        
+        function fastAnimate() {
+            if (!isProgressBarActive || isHidingProgressBar === false) {
+                if (fastAnimationFrame) {
+                    cancelAnimationFrame(fastAnimationFrame);
+                }
+                return;
+            }
+            
             if (currentProgress < 90) {
                 currentProgress += 1;
                 updateProgress(currentProgress);
+                fastAnimationFrame = requestAnimationFrame(fastAnimate);
             } else {
-                clearInterval(fastInterval);
+                if (fastAnimationFrame) {
+                    cancelAnimationFrame(fastAnimationFrame);
+                }
             }
-        }, fastStepInterval);
+        }
+        
+        // requestAnimationFrame으로 빠르게 진행
+        fastAnimationFrame = requestAnimationFrame(fastAnimate);
         
         // 90%에 도달하거나 남은 시간이 지나면 100%로 완료
         setTimeout(function() {
-            clearInterval(fastInterval);
+            if (fastAnimationFrame) {
+                cancelAnimationFrame(fastAnimationFrame);
+            }
             updateProgress(100);
             
             // 300ms 후 숨김
@@ -196,6 +225,8 @@ function hideProgressBar() {
                 }
                 currentProgress = 0;
                 progressStartTime = null;
+                isProgressBarActive = false;
+                isHidingProgressBar = false;
             }, 300);
         }, remainingTime);
     } else {
@@ -211,6 +242,8 @@ function hideProgressBar() {
                 }
                 currentProgress = 0;
                 progressStartTime = null;
+                isProgressBarActive = false;
+                isHidingProgressBar = false;
             }, 300);
         }, remainingTime);
     }
@@ -235,7 +268,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // 페이지 로드 완료 시 프로그레스 바 숨김
-    hideProgressBar();
+    // 프로그레스 바가 활성화되어 있을 때만 숨김 (페이지 전환으로 인한 로드인 경우)
+    if (isProgressBarActive) {
+        hideProgressBar();
+    }
     
     // 숫자만 입력 가능하도록 제한 (사번, 비밀번호 입력 필드)
     const numberInputs = document.querySelectorAll('input[pattern="[0-9]{4}"]');
@@ -276,8 +312,15 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // 링크 클릭/터치 시 프로그레스 바 표시 (로그아웃 링크 제외)
-    // mousedown/touchstart를 사용하여 더 일찍 트리거
+    // touchstart만 사용하여 모바일에서 빠르게 트리거하고 중복 방지
+    let linkInteractionHandled = false;
+    
     function handleLinkInteraction(e) {
+        // 이미 처리된 이벤트면 무시 (중복 방지)
+        if (linkInteractionHandled) {
+            return;
+        }
+        
         const link = e.target.closest('a');
         if (link && link.href && !link.href.startsWith('javascript:') && !link.href.startsWith('#')) {
             // 로그아웃 링크는 제외 (모달이 표시되므로)
@@ -292,6 +335,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (linkUrl.origin === currentUrl.origin) {
                     // 즉시 프로그레스 바 표시
                     showProgressBar();
+                    linkInteractionHandled = true;
+                    
+                    // 짧은 시간 후 플래그 리셋 (같은 링크 재클릭 허용)
+                    setTimeout(function() {
+                        linkInteractionHandled = false;
+                    }, 100);
                 }
             } catch (err) {
                 // URL 파싱 오류 시 무시
@@ -299,12 +348,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // mousedown과 touchstart 모두 처리 (모바일 호환성)
-    document.addEventListener('mousedown', handleLinkInteraction);
-    document.addEventListener('touchstart', handleLinkInteraction);
+    // touchstart만 사용 (모바일에서 가장 빠르게 트리거)
+    // mousedown과 click은 제거하여 중복 호출 방지
+    document.addEventListener('touchstart', handleLinkInteraction, { passive: true });
     
-    // click 이벤트도 백업으로 유지
-    document.addEventListener('click', handleLinkInteraction);
+    // 데스크톱을 위한 mousedown (touchstart가 없을 때만)
+    if (!('ontouchstart' in window)) {
+        document.addEventListener('mousedown', handleLinkInteraction);
+    }
 });
 
 // 페이지 언로드 시 프로그레스 바 표시 (로그아웃 제외)
