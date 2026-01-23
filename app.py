@@ -323,10 +323,15 @@ def calendar_view():
         today_day_str = str(today_day)
         
         # 근무종료 버튼 활성화 조건:
-        # 1. 오늘 날짜에 O가 있거나
+        # 1. 오늘 날짜에 O가 있고, sales_DB_2026에 기록이 없는 경우
         # 2. 어제 날짜에 O가 있고, 어제 날짜에 근무시작 정보가 있으며, sales_DB_2026에 기록이 없는 경우
         #    (지각으로 어제 근무를 시작했지만 아직 종료하지 않은 경우)
-        can_end_work = work_status.get(today_day) == 'O'
+        can_end_work = False
+        if work_status.get(today_day) == 'O':
+            # 오늘 날짜에 O가 있으면 sales_DB_2026에 기록이 있는지 확인
+            operation_date = current_date.strftime('%Y/%m/%d')
+            if not has_sales_record_for_date(employee_id, month_name, operation_date):
+                can_end_work = True
         
         # 어제 날짜 확인
         if not can_end_work:
@@ -362,8 +367,20 @@ def calendar_view():
         
         # 근무시작 버튼 활성화 조건:
         # 1. 오늘 날짜에 O가 없는 경우
-        # 2. 어제 날짜에 진행 중인 근무가 있으면 비활성화 (지각으로 어제 근무를 시작했지만 아직 종료하지 않은 경우)
-        can_start_work = work_status.get(today_day) != 'O'
+        # 2. 오늘 날짜에 O가 있어도 sales_DB_2026에 기록이 있으면 활성화 (오늘 근무가 이미 종료된 경우)
+        # 3. 어제 날짜에 진행 중인 근무가 있으면 비활성화 (지각으로 어제 근무를 시작했지만 아직 종료하지 않은 경우)
+        if work_status.get(today_day) == 'O':
+            # 오늘 날짜에 O가 있으면 sales_DB_2026에 기록이 있는지 확인
+            operation_date = current_date.strftime('%Y/%m/%d')
+            if has_sales_record_for_date(employee_id, month_name, operation_date):
+                # sales_DB_2026에 기록이 있으면 오늘 근무가 종료된 것이므로 근무시작 버튼 활성화
+                can_start_work = True
+            else:
+                # sales_DB_2026에 기록이 없으면 오늘 근무가 진행 중이므로 근무시작 버튼 비활성화
+                can_start_work = False
+        else:
+            # 오늘 날짜에 O가 없으면 근무시작 버튼 활성화
+            can_start_work = True
         
         # 어제 날짜에 진행 중인 근무가 있는지 확인
         if can_start_work:

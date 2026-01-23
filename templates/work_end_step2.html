@@ -160,12 +160,22 @@ document.addEventListener('DOMContentLoaded', function() {
     confirmBtn.addEventListener('click', function() {
         // 버튼 비활성화 및 처리 중 애니메이션 시작
         confirmBtn.disabled = true;
-        let dotCount = 0;
         const originalText = confirmBtn.textContent;
-        const loadingInterval = setInterval(function() {
+        
+        // 점진적으로 늘어나는 점 애니메이션
+        let dotCount = 0;
+        
+        // 즉시 첫 번째 상태 표시하고 애니메이션 시작
+        function updateText() {
             dotCount = (dotCount % 3) + 1;
             confirmBtn.textContent = '처리 중' + '.'.repeat(dotCount);
-        }, 500); // 0.5초마다 업데이트
+        }
+        
+        // 즉시 첫 번째 상태 표시
+        updateText();
+        
+        // 이후 주기적으로 업데이트
+        const loadingInterval = setInterval(updateText, 500); // 0.5초마다 업데이트
         
         // 폼 제출
         form.submit();

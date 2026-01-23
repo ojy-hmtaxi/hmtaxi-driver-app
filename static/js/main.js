@@ -37,15 +37,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 submitButton.disabled = true;
                 const originalText = submitButton.textContent;
                 
-                // 즉시 첫 번째 상태 표시
-                submitButton.textContent = '처리 중.';
-                
                 // 점진적으로 늘어나는 점 애니메이션
-                let dotCount = 1;
-                const intervalId = setInterval(function() {
+                let dotCount = 0;
+                
+                // 즉시 첫 번째 상태 표시하고 애니메이션 시작
+                function updateText() {
                     dotCount = (dotCount % 3) + 1;
                     submitButton.textContent = '처리 중' + '.'.repeat(dotCount);
-                }, 500); // 0.5초마다 업데이트
+                }
+                
+                // 즉시 첫 번째 상태 표시
+                updateText();
+                
+                // 이후 주기적으로 업데이트
+                const intervalId = setInterval(updateText, 500); // 0.5초마다 업데이트
                 
                 // 인터벌 ID 저장 (나중에 정리하기 위해)
                 loadingIntervals.set(form, intervalId);
