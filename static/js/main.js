@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     forms.forEach(form => {
         form.addEventListener('submit', function(e) {
             const submitButton = form.querySelector('button[type="submit"]');
-            if (submitButton) {
+            if (submitButton && !submitButton.disabled) {
                 submitButton.disabled = true;
                 const originalText = submitButton.textContent;
                 
@@ -49,8 +49,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 즉시 첫 번째 상태 표시
                 updateText();
                 
-                // 이후 주기적으로 업데이트
-                const intervalId = setInterval(updateText, 500); // 0.5초마다 업데이트
+                // 이후 주기적으로 업데이트 (더 짧은 주기로 변경)
+                const intervalId = setInterval(updateText, 400); // 0.4초마다 업데이트
                 
                 // 인터벌 ID 저장 (나중에 정리하기 위해)
                 loadingIntervals.set(form, intervalId);

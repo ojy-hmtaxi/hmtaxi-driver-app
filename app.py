@@ -598,12 +598,12 @@ def work_start():
     if best_record and best_record.get('근무유형'):
         work_type_from_sheet = str(best_record.get('근무유형', '주간')).strip()
         # 근무유형이 '일차'인 경우 '일차'로 설정
-        if work_type_from_sheet not in ['주간', '야간', '일차', '교대']:
+        if work_type_from_sheet not in ['주간', '야간', '일차', '교대', '리스']:
             work_type_from_sheet = '주간'  # 유효하지 않은 값이면 기본값 사용
     elif work_data and work_data.get('근무유형'):
         # best_record가 없으면 첫 번째 행에서 가져오기
         work_type_from_sheet = str(work_data.get('근무유형', '주간')).strip()
-        if work_type_from_sheet not in ['주간', '야간', '일차', '교대']:
+        if work_type_from_sheet not in ['주간', '야간', '일차', '교대', '리스']:
             work_type_from_sheet = '주간'  # 유효하지 않은 값이면 기본값 사용
     
     # 현재 날짜/시간 포맷팅 (운행시작일시 표시용)
@@ -712,12 +712,12 @@ def work_end():
     if best_record and best_record.get('근무유형'):
         work_type_from_sheet = str(best_record.get('근무유형', '주간')).strip()
         # 근무유형이 '일차'인 경우 '일차'로 설정
-        if work_type_from_sheet not in ['주간', '야간', '일차', '교대']:
+        if work_type_from_sheet not in ['주간', '야간', '일차', '교대', '리스']:
             work_type_from_sheet = '주간'  # 유효하지 않은 값이면 기본값 사용
     elif work_data and work_data.get('근무유형'):
         # best_record가 없으면 첫 번째 행에서 가져오기
         work_type_from_sheet = str(work_data.get('근무유형', '주간')).strip()
-        if work_type_from_sheet not in ['주간', '야간', '일차', '교대']:
+        if work_type_from_sheet not in ['주간', '야간', '일차', '교대', '리스']:
             work_type_from_sheet = '주간'  # 유효하지 않은 값이면 기본값 사용
     
     # 오늘 날짜 표시

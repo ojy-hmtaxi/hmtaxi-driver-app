@@ -384,6 +384,18 @@ body {
     cursor: not-allowed;
 }
 
+/* 비활성화된 근무준비 버튼을 더 어둡게 */
+.btn-primary.btn-disabled {
+    background-color: #4a6aa1;
+    opacity: 0.8;
+}
+
+/* 비활성화된 근무종료 버튼도 더 어둡게 */
+.btn-danger.btn-disabled {
+    background-color: #8b2635;
+    opacity: 0.8;
+}
+
 .calendar-wrapper {
     margin-top: 20px;
 }

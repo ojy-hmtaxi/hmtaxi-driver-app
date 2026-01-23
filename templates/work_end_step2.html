@@ -158,6 +158,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 확인 버튼 - 폼 제출
     confirmBtn.addEventListener('click', function() {
+        if (confirmBtn.disabled) return; // 이미 제출 중이면 무시
+        
         // 버튼 비활성화 및 처리 중 애니메이션 시작
         confirmBtn.disabled = true;
         const originalText = confirmBtn.textContent;
@@ -174,11 +176,16 @@ document.addEventListener('DOMContentLoaded', function() {
         // 즉시 첫 번째 상태 표시
         updateText();
         
-        // 이후 주기적으로 업데이트
-        const loadingInterval = setInterval(updateText, 500); // 0.5초마다 업데이트
+        // 이후 주기적으로 업데이트 (더 짧은 주기로 변경)
+        const loadingInterval = setInterval(updateText, 400); // 0.4초마다 업데이트
         
         // 폼 제출
         form.submit();
+        
+        // 페이지 언로드 시 정리
+        window.addEventListener('beforeunload', function() {
+            clearInterval(loadingInterval);
+        });
     });
     
     // 모달 외부 클릭 시 닫기
