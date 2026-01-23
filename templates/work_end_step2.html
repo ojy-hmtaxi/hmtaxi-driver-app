@@ -160,32 +160,12 @@ document.addEventListener('DOMContentLoaded', function() {
     confirmBtn.addEventListener('click', function() {
         if (confirmBtn.disabled) return; // 이미 제출 중이면 무시
         
-        // 버튼 비활성화 및 처리 중 애니메이션 시작
+        // 버튼 비활성화 및 처리 중 텍스트 표시
         confirmBtn.disabled = true;
-        const originalText = confirmBtn.textContent;
-        
-        // 점진적으로 늘어나는 점 애니메이션
-        let dotCount = 0;
-        
-        // 즉시 첫 번째 상태 표시하고 애니메이션 시작
-        function updateText() {
-            dotCount = (dotCount % 3) + 1;
-            confirmBtn.textContent = '처리 중' + '.'.repeat(dotCount);
-        }
-        
-        // 즉시 첫 번째 상태 표시
-        updateText();
-        
-        // 이후 주기적으로 업데이트 (더 짧은 주기로 변경)
-        const loadingInterval = setInterval(updateText, 400); // 0.4초마다 업데이트
+        confirmBtn.textContent = '처리 중...';
         
         // 폼 제출
         form.submit();
-        
-        // 페이지 언로드 시 정리
-        window.addEventListener('beforeunload', function() {
-            clearInterval(loadingInterval);
-        });
     });
     
     // 모달 외부 클릭 시 닫기

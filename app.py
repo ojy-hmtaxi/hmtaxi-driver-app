@@ -65,9 +65,10 @@ class SimpleCache:
                 del self._cache[key]
                 del self._timestamps[key]
 
-# 전역 캐시 인스턴스 (근무 데이터: 30초, 매출 데이터: 60초)
-work_data_cache = SimpleCache(default_ttl=30)  # 근무 데이터는 30초 캐시
-sales_data_cache = SimpleCache(default_ttl=60)  # 매출 데이터는 60초 캐시
+# 전역 캐시 인스턴스 (근무 데이터: 60초, 매출 데이터: 120초)
+# TTL 증가로 API 호출 횟수 감소 (데이터 변경 빈도가 낮으므로 안전)
+work_data_cache = SimpleCache(default_ttl=60)  # 근무 데이터는 60초 캐시
+sales_data_cache = SimpleCache(default_ttl=120)  # 매출 데이터는 120초 캐시
 from utils.auth import authenticate_user, change_password, check_default_password
 from utils.google_sheets import (
     get_user_work_data, 
