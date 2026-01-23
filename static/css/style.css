@@ -1378,7 +1378,7 @@ body {
 .progress-ring-circle {
     stroke-dasharray: 257.5;
     stroke-dashoffset: 257.5;
-    transition: stroke-dashoffset 0.3s ease;
+    /* transition 제거: JavaScript에서 직접 제어 */
 }
 
 .progress-text {

@@ -5,9 +5,11 @@ let progressBar = null;
 let progressCircle = null;
 let progressText = null;
 let progressInterval = null;
+let progressAnimationFrame = null;
 let currentProgress = 0;
 let progressStartTime = null;
 let minDisplayTime = 2000; // 최소 표시 시간: 2초
+let circumference = 0; // 전역으로 둘레 저장
 
 function initProgressBar() {
     progressBar = document.getElementById('pageProgressBar');
@@ -18,12 +20,14 @@ function initProgressBar() {
         // 원의 둘레 계산 (2 * π * r)
         // 90px 크기, 반지름 41 (중심 45에서 stroke-width 8 고려)
         const radius = 41;
-        const circumference = 2 * Math.PI * radius;
+        circumference = 2 * Math.PI * radius;
         
         // stroke-dasharray와 stroke-dashoffset 설정
         if (progressCircle) {
             progressCircle.style.strokeDasharray = circumference;
             progressCircle.style.strokeDashoffset = circumference;
+            // transition 제거를 위해 명시적으로 설정
+            progressCircle.style.transition = 'none';
         }
     }
 }
@@ -45,47 +49,91 @@ function showProgressBar() {
         return;
     }
     
-    // 이전 인터벌 정리
+    // 이전 애니메이션 정리
     if (progressInterval) {
         clearInterval(progressInterval);
         progressInterval = null;
+    }
+    if (progressAnimationFrame) {
+        cancelAnimationFrame(progressAnimationFrame);
+        progressAnimationFrame = null;
     }
     
     // 초기값 설정
     currentProgress = 0;
     progressStartTime = Date.now(); // 시작 시간 기록
     
-    // 프로그레스 바 표시
+    // 프로그레스 바 표시 (강제 리플로우)
     progressBar.style.display = 'flex';
+    // 브라우저에 리플로우 강제
+    void progressBar.offsetHeight;
     
-    // 즉시 0% 표시
-    updateProgress(0);
+    // 즉시 0% 표시 (transition 없이)
+    if (progressCircle) {
+        progressCircle.style.transition = 'none';
+        progressCircle.style.strokeDashoffset = circumference;
+    }
+    if (progressText) {
+        progressText.textContent = '0%';
+    }
     
     // 2초 동안 0% -> 90%까지 진행
-    // 더 짧은 간격으로 업데이트하여 페이지 이동 전에도 업데이트 보장
+    // requestAnimationFrame과 setInterval을 결합하여 모바일 호환성 향상
     const duration = 2000; // 2초
     const targetProgress = 90;
     const startTime = Date.now();
-    const updateInterval = 50; // 50ms마다 업데이트 (더 자주 업데이트)
+    const updateInterval = 16; // ~60fps를 위한 16ms 간격
     
+    let lastUpdateTime = startTime;
+    
+    function animate() {
+        const now = Date.now();
+        const elapsed = now - startTime;
+        
+        // 최소 16ms마다 업데이트 (60fps)
+        if (now - lastUpdateTime >= updateInterval) {
+            const progress = Math.min((elapsed / duration) * targetProgress, targetProgress);
+            const newProgress = Math.floor(progress);
+            
+            if (newProgress !== currentProgress) {
+                currentProgress = newProgress;
+                updateProgress(currentProgress);
+            }
+            
+            lastUpdateTime = now;
+        }
+        
+        if (elapsed < duration && currentProgress < targetProgress) {
+            progressAnimationFrame = requestAnimationFrame(animate);
+        } else {
+            // 90%에 도달
+            currentProgress = targetProgress;
+            updateProgress(targetProgress);
+            progressAnimationFrame = null;
+        }
+    }
+    
+    // setInterval을 백업으로 사용 (모바일 브라우저 호환성)
     progressInterval = setInterval(function() {
         const elapsed = Date.now() - startTime;
         const progress = Math.min((elapsed / duration) * targetProgress, targetProgress);
-        
         const newProgress = Math.floor(progress);
+        
         if (newProgress !== currentProgress) {
             currentProgress = newProgress;
             updateProgress(currentProgress);
         }
         
         if (progress >= targetProgress) {
-            // 90%에 도달
             clearInterval(progressInterval);
             progressInterval = null;
-            currentProgress = 90;
-            updateProgress(90);
+            currentProgress = targetProgress;
+            updateProgress(targetProgress);
         }
     }, updateInterval);
+    
+    // requestAnimationFrame 시작
+    progressAnimationFrame = requestAnimationFrame(animate);
 }
 
 // 전역으로 노출 (다른 스크립트에서 사용 가능)
@@ -94,13 +142,21 @@ window.showProgressBar = showProgressBar;
 function updateProgress(percent) {
     if (!progressCircle || !progressText) return;
     
-    // 90px 크기, 반지름 41
-    const radius = 41;
-    const circumference = 2 * Math.PI * radius;
+    // 둘레가 계산되지 않았으면 계산
+    if (!circumference) {
+        const radius = 41;
+        circumference = 2 * Math.PI * radius;
+    }
+    
     const offset = circumference - (percent / 100) * circumference;
     
+    // transition 없이 즉시 업데이트
+    progressCircle.style.transition = 'none';
     progressCircle.style.strokeDashoffset = offset;
     progressText.textContent = Math.round(percent) + '%';
+    
+    // 강제 리플로우 (모바일 브라우저 호환성)
+    void progressCircle.offsetHeight;
 }
 
 function hideProgressBar() {
@@ -160,9 +216,23 @@ function hideProgressBar() {
     }
 }
 
+// 즉시 초기화 시도 (스크립트 로드 시점)
+if (document.readyState === 'loading') {
+    // DOM이 아직 로드 중이면 DOMContentLoaded 대기
+    document.addEventListener('DOMContentLoaded', function() {
+        initProgressBar();
+    });
+} else {
+    // DOM이 이미 로드되었으면 즉시 초기화
+    initProgressBar();
+}
+
 // 페이지 전환 감지
 document.addEventListener('DOMContentLoaded', function() {
-    initProgressBar();
+    // 이미 초기화되었는지 확인
+    if (!progressBar) {
+        initProgressBar();
+    }
     
     // 페이지 로드 완료 시 프로그레스 바 숨김
     hideProgressBar();
@@ -205,8 +275,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // 링크 클릭 시 프로그레스 바 표시 (로그아웃 링크 제외)
-    document.addEventListener('click', function(e) {
+    // 링크 클릭/터치 시 프로그레스 바 표시 (로그아웃 링크 제외)
+    // mousedown/touchstart를 사용하여 더 일찍 트리거
+    function handleLinkInteraction(e) {
         const link = e.target.closest('a');
         if (link && link.href && !link.href.startsWith('javascript:') && !link.href.startsWith('#')) {
             // 로그아웃 링크는 제외 (모달이 표시되므로)
@@ -219,22 +290,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 const linkUrl = new URL(link.href, window.location.origin);
                 const currentUrl = new URL(window.location.href);
                 if (linkUrl.origin === currentUrl.origin) {
+                    // 즉시 프로그레스 바 표시
                     showProgressBar();
                 }
             } catch (err) {
                 // URL 파싱 오류 시 무시
             }
         }
-    });
+    }
+    
+    // mousedown과 touchstart 모두 처리 (모바일 호환성)
+    document.addEventListener('mousedown', handleLinkInteraction);
+    document.addEventListener('touchstart', handleLinkInteraction);
+    
+    // click 이벤트도 백업으로 유지
+    document.addEventListener('click', handleLinkInteraction);
 });
 
 // 페이지 언로드 시 프로그레스 바 표시 (로그아웃 제외)
-window.addEventListener('beforeunload', function() {
-    // 로그아웃 중이면 프로그레스 바 표시하지 않음
-    if (!window.skipProgressBar) {
-        showProgressBar();
-    }
-});
+// beforeunload는 모바일에서 신뢰할 수 없으므로 링크/폼 클릭 시점에 표시
+// beforeunload는 제거하고 링크/폼 이벤트에서만 처리
 
 // 근무시작 버튼 클릭 시 확인
 function confirmWorkStart() {
