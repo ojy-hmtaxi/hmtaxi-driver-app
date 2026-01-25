@@ -33,11 +33,14 @@ const LoadingManager = {
         sessionStorage.setItem('pageTransition', 'true');
         
         // 즉시 표시 (모바일에서 빠른 페이지 전환 대응)
-        requestAnimationFrame(() => {
-            this.overlay.classList.add('show');
-            // 스피너 애니메이션 강제 시작
-            this.ensureAnimation();
-        });
+        // requestAnimationFrame 제거하고 즉시 표시
+        this.overlay.classList.add('show');
+        
+        // 강제 리플로우로 즉시 렌더링
+        void this.overlay.offsetHeight;
+        
+        // 스피너 애니메이션 강제 시작
+        this.ensureAnimation();
     },
     
     /**
@@ -111,12 +114,23 @@ const LoadingManager = {
             return;
         }
         
-        // 이미지가 로드되었는지 확인
-        if (spinnerImage.complete) {
+        // 이미지가 로드되었는지 확인 (모바일에서 즉시 시작)
+        if (spinnerImage.complete && spinnerImage.naturalHeight !== 0) {
+            // 이미지가 완전히 로드됨
             this.startRotationAnimation(spinnerImage);
         } else {
+            // 이미지 로드 대기 (하지만 애니메이션은 즉시 시작)
+            this.startRotationAnimation(spinnerImage);
+            
+            // 이미지 로드 완료 후 재확인
             spinnerImage.addEventListener('load', () => {
                 this.startRotationAnimation(spinnerImage);
+            }, { once: true });
+            
+            // 이미지 로드 실패 시에도 애니메이션은 계속
+            spinnerImage.addEventListener('error', () => {
+                console.warn('Spinner image failed to load');
+                // 이미지가 없어도 애니메이션은 유지
             }, { once: true });
         }
     },

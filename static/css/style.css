@@ -1356,9 +1356,16 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 10000;
+    z-index: 99999;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.2s ease;
+    /* 모바일 브라우저 호환성 */
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    /* 모바일에서 터치 이벤트 차단 */
+    touch-action: none;
+    /* 모바일에서 레이어 최적화 */
+    will-change: opacity;
 }
 
 .loading-overlay.show {
@@ -1429,17 +1436,35 @@ body {
 
 /* 모바일 스타일 */
 @media (max-width: 768px) {
+    .loading-overlay {
+        /* 모바일에서 z-index를 더 높게 */
+        z-index: 999999;
+    }
+    
     .progress-spinner-image {
         width: 100px;
         height: 100px;
+        min-width: 100px;
+        min-height: 100px;
+        /* 모바일에서 강제 표시 */
+        opacity: 1 !important;
+        visibility: visible !important;
     }
     
     .loading-message {
         font-size: 14px;
+        /* 모바일에서 텍스트가 보이도록 */
+        opacity: 1 !important;
+        visibility: visible !important;
     }
     
     .loading-content {
         gap: 20px;
+        /* 모바일에서 중앙 정렬 보장 */
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
 }
 
