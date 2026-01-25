@@ -177,54 +177,101 @@ const LoadingManager = {
 };
 
 /**
- * 모바일 브라우저 UI 숨김 최적화
+ * 모바일 브라우저 네비게이션 바 숨김 처리
  */
-(function() {
-    // iOS Safari 주소창 자동 숨김
-    if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-        // 스크롤 시 주소창 숨김
-        let lastScrollTop = 0;
-        window.addEventListener('scroll', function() {
-            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-            if (Math.abs(lastScrollTop - scrollTop) > 5) {
-                // 스크롤이 발생하면 주소창이 자동으로 숨겨짐
-                lastScrollTop = scrollTop;
-            }
-        }, { passive: true });
+const MobileBrowserUI = {
+    /**
+     * 뷰포트 높이 조정 (모바일 브라우저 네비게이션 바 제외)
+     */
+    setViewportHeight() {
+        // 동적 뷰포트 높이 설정
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
         
-        // 초기 높이 설정
-        function setViewportHeight() {
-            const vh = window.innerHeight * 0.01;
-            document.documentElement.style.setProperty('--vh', `${vh}px`);
+        // 모바일에서 실제 뷰포트 높이 사용
+        if (window.innerHeight !== window.visualViewport?.height) {
+            const actualHeight = window.visualViewport?.height || window.innerHeight;
+            document.documentElement.style.setProperty('--vh', `${actualHeight * 0.01}px`);
         }
-        setViewportHeight();
-        window.addEventListener('resize', setViewportHeight);
-        window.addEventListener('orientationchange', function() {
-            setTimeout(setViewportHeight, 100);
+    },
+    
+    /**
+     * 스크롤 시 네비게이션 바 숨김 처리
+     */
+    hideNavigationBar() {
+        let lastScrollTop = 0;
+        let ticking = false;
+        
+        const handleScroll = () => {
+            if (!ticking) {
+                window.requestAnimationFrame(() => {
+                    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                    
+                    // 스크롤 방향에 따라 네비게이션 바 숨김/표시
+                    if (scrollTop > lastScrollTop && scrollTop > 50) {
+                        // 아래로 스크롤 - 네비게이션 바 숨김
+                        document.body.style.paddingBottom = '0px';
+                    } else {
+                        // 위로 스크롤 - 네비게이션 바 표시 (하지만 여전히 숨김 유지)
+                        document.body.style.paddingBottom = '0px';
+                    }
+                    
+                    lastScrollTop = scrollTop;
+                    ticking = false;
+                });
+                ticking = true;
+            }
+        };
+        
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        window.addEventListener('touchmove', handleScroll, { passive: true });
+    },
+    
+    /**
+     * 초기화
+     */
+    init() {
+        // 뷰포트 높이 설정
+        this.setViewportHeight();
+        
+        // 리사이즈 시 뷰포트 높이 재설정
+        window.addEventListener('resize', () => {
+            this.setViewportHeight();
         });
+        
+        // visualViewport API 지원 시 (모바일 브라우저)
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                this.setViewportHeight();
+            });
+            window.visualViewport.addEventListener('scroll', () => {
+                this.setViewportHeight();
+            });
+        }
+        
+        // 스크롤 시 네비게이션 바 숨김
+        this.hideNavigationBar();
+        
+        // 페이지 로드 시 뷰포트 높이 재설정
+        window.addEventListener('load', () => {
+            this.setViewportHeight();
+        });
+        
+        // 모바일에서 전체 화면 모드 강제
+        if (window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches) {
+            // PWA 모드에서 이미 전체 화면
+            document.body.classList.add('pwa-mode');
+        }
     }
-    
-    // Android Chrome 주소창 숨김
-    if (/Android/.test(navigator.userAgent)) {
-        // 스크롤 시 주소창 숨김
-        window.addEventListener('scroll', function() {
-            // 스크롤이 발생하면 주소창이 자동으로 숨겨짐
-        }, { passive: true });
-    }
-    
-    // PWA 설치 프롬프트 (선택사항)
-    let deferredPrompt;
-    window.addEventListener('beforeinstallprompt', (e) => {
-        // PWA 설치 프롬프트를 나중에 사용할 수 있도록 저장
-        deferredPrompt = e;
-        // 필요시 설치 버튼 표시 로직 추가 가능
-    });
-})();
+};
 
 /**
  * 페이지 전환 감지 및 이벤트 핸들러 설정
  */
 document.addEventListener('DOMContentLoaded', function() {
+    // 모바일 브라우저 UI 숨김 초기화
+    MobileBrowserUI.init();
+    
     // 로딩 매니저 초기화
     if (!LoadingManager.overlay || !LoadingManager.container) {
         LoadingManager.init();
