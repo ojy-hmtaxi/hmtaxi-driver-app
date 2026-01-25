@@ -228,21 +228,52 @@ const MobileBrowserUI = {
     },
     
     /**
+     * 상태 바 높이 감지 및 상단 여백 설정
+     */
+    setStatusBarPadding() {
+        // iOS Safari에서 safe-area-inset-top 사용
+        const safeAreaTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-top')) || 
+                           parseInt(getComputedStyle(document.body).paddingTop) || 0;
+        
+        // 모바일에서 상태 바 높이 감지 (약 24-44px)
+        const isMobile = window.innerWidth <= 768;
+        const statusBarHeight = isMobile ? Math.max(safeAreaTop, 24) : 0;
+        
+        // body에 상단 여백 설정
+        if (statusBarHeight > 0) {
+            document.body.style.paddingTop = `${statusBarHeight}px`;
+            document.documentElement.style.setProperty('--status-bar-height', `${statusBarHeight}px`);
+        }
+        
+        // container에도 상단 여백 추가
+        const container = document.getElementById('mainContainer');
+        if (container && isMobile) {
+            const containerPaddingTop = Math.max(parseInt(getComputedStyle(container).paddingTop) || 10, statusBarHeight + 5);
+            container.style.paddingTop = `${containerPaddingTop}px`;
+        }
+    },
+    
+    /**
      * 초기화
      */
     init() {
         // 뷰포트 높이 설정
         this.setViewportHeight();
         
-        // 리사이즈 시 뷰포트 높이 재설정
+        // 상태 바 높이 감지 및 상단 여백 설정
+        this.setStatusBarPadding();
+        
+        // 리사이즈 시 뷰포트 높이 및 상태 바 여백 재설정
         window.addEventListener('resize', () => {
             this.setViewportHeight();
+            this.setStatusBarPadding();
         });
         
         // visualViewport API 지원 시 (모바일 브라우저)
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', () => {
                 this.setViewportHeight();
+                this.setStatusBarPadding();
             });
             window.visualViewport.addEventListener('scroll', () => {
                 this.setViewportHeight();
@@ -252,9 +283,10 @@ const MobileBrowserUI = {
         // 스크롤 시 네비게이션 바 숨김
         this.hideNavigationBar();
         
-        // 페이지 로드 시 뷰포트 높이 재설정
+        // 페이지 로드 시 뷰포트 높이 및 상태 바 여백 재설정
         window.addEventListener('load', () => {
             this.setViewportHeight();
+            this.setStatusBarPadding();
         });
         
         // 모바일에서 전체 화면 모드 강제
