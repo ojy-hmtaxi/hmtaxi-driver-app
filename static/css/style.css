@@ -1195,10 +1195,10 @@ body {
     
     .calendar-container {
         /* 캘린더 컨테이너 상단 여백 최소화 */
-        padding-top: 60px;
+        padding-top: 50px;
         padding-left: 10px;
         padding-right: 10px;
-        padding-bottom: 20px;
+        padding-bottom: 50px;
         /* 하단 여백 제거 */
         margin-bottom: 0px;
     }
@@ -1334,6 +1334,8 @@ body {
     
     .work-prepare-container {
         padding: 15px;
+        padding-top: 50px;
+        padding-bottom: 50px;
     }
     
     .date-selector {
