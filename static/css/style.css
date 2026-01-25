@@ -1345,7 +1345,7 @@ body {
     }
 }
 
-/* 로딩 오버레이 및 원형 프로그레스 바 */
+/* 로딩 오버레이 및 스피너 */
 .loading-overlay {
     position: fixed;
     top: 0;
@@ -1372,72 +1372,30 @@ body {
     gap: 24px;
 }
 
-.progress-circle {
-    position: relative;
-    width: 120px;
-    height: 120px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.progress-ring {
+.progress-spinner-image {
     width: 120px;
     height: 120px;
     animation: rotate 2s linear infinite;
-    /* 모바일 호환성: will-change 제거 (모바일에서 문제를 일으킬 수 있음) */
-    /* 애니메이션이 즉시 시작되도록 보장 */
-    animation-play-state: running;
     /* 모바일 브라우저에서 하드웨어 가속 강제 */
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
-}
-
-.progress-ring-circle-bg {
-    stroke: #ffffff;
-    opacity: 0.3;
-}
-
-.progress-ring-circle {
-    stroke: #007bff;
-    stroke-dasharray: 339.3;
-    stroke-dashoffset: 339.3;
-    animation: progress-rotate 1.5s ease-in-out infinite;
-    /* 모바일 호환성: will-change 제거 (모바일에서 문제를 일으킬 수 있음) */
-    transform-origin: center;
-    /* 애니메이션이 즉시 시작되도록 보장 */
-    animation-play-state: running;
-    /* 애니메이션 시작 지점을 조정하여 즉시 보이도록 */
-    animation-delay: 0s;
-    /* 모바일 브라우저에서 하드웨어 가속 강제 */
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
+    /* 애니메이션 최적화 */
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    /* 이미지 렌더링 최적화 */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    display: block;
 }
 
 @keyframes rotate {
     from {
-        transform: rotate(0deg);
+        transform: rotate(0deg) translateZ(0);
+        -webkit-transform: rotate(0deg) translateZ(0);
     }
     to {
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes progress-rotate {
-    0% {
-        stroke-dashoffset: 339.3;
-    }
-    25% {
-        stroke-dashoffset: 254.5;
-    }
-    50% {
-        stroke-dashoffset: 169.65;
-    }
-    75% {
-        stroke-dashoffset: 254.5;
-    }
-    100% {
-        stroke-dashoffset: 339.3;
+        transform: rotate(360deg) translateZ(0);
+        -webkit-transform: rotate(360deg) translateZ(0);
     }
 }
 
@@ -1471,12 +1429,7 @@ body {
 
 /* 모바일 스타일 */
 @media (max-width: 768px) {
-    .progress-circle {
-        width: 100px;
-        height: 100px;
-    }
-    
-    .progress-ring {
+    .progress-spinner-image {
         width: 100px;
         height: 100px;
     }
@@ -1488,22 +1441,5 @@ body {
     .loading-content {
         gap: 20px;
     }
-    
-    /* 모바일에서 SVG 애니메이션 최적화 */
-    .progress-ring-circle {
-        /* 모바일에서 하드웨어 가속 강제 */
-        transform: translateZ(0);
-        -webkit-transform: translateZ(0);
-        /* 모바일에서 애니메이션 성능 향상 */
-        backface-visibility: hidden;
-        -webkit-backface-visibility: hidden;
-    }
-    
-    .progress-ring {
-        /* 모바일에서 회전 애니메이션 최적화 */
-        transform: translateZ(0);
-        -webkit-transform: translateZ(0);
-        backface-visibility: hidden;
-        -webkit-backface-visibility: hidden;
-    }
 }
+

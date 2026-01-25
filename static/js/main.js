@@ -1,7 +1,7 @@
 // 전역 JavaScript 함수
 
 /**
- * 로딩 오버레이 및 원형 프로그레스 바 제어
+ * 로딩 오버레이 및 스피너 제어
  */
 const LoadingManager = {
     overlay: null,
@@ -33,20 +33,18 @@ const LoadingManager = {
         sessionStorage.setItem('pageTransition', 'true');
         
         // 즉시 표시 (모바일에서 빠른 페이지 전환 대응)
-        this.overlay.classList.add('show');
-        
-        // 강제 리플로우로 즉시 렌더링
-        void this.overlay.offsetHeight;
-        
-        // 프로그레스 바 애니메이션 강제 시작
-        this.ensureAnimation();
+        requestAnimationFrame(() => {
+            this.overlay.classList.add('show');
+            // 스피너 애니메이션 강제 시작
+            this.ensureAnimation();
+        });
     },
     
     /**
-     * 로딩 오버레이 숨김 및 페이지 슬라이드 인
+     * 로딩 오버레이 숨김
      */
     hide() {
-        if (!this.overlay || !this.container) return;
+        if (!this.overlay) return;
         
         // 오버레이 숨김
         if (this.isActive) {
@@ -100,48 +98,47 @@ const LoadingManager = {
     },
     
     /**
-     * 프로그레스 바 애니메이션 강제 시작
+     * 스피너 애니메이션 강제 시작
      */
     ensureAnimation() {
         if (!this.overlay) return;
         
-        const progressRing = this.overlay.querySelector('.progress-ring');
-        const progressCircle = this.overlay.querySelector('.progress-ring-circle');
+        const spinnerImage = this.overlay.querySelector('.progress-spinner-image');
         
-        if (!progressRing || !progressCircle) {
+        if (!spinnerImage) {
             // 요소가 아직 준비되지 않았으면 재시도
             setTimeout(() => this.ensureAnimation(), 10);
             return;
         }
         
-        // SVG가 완전히 렌더링되도록 강제 리플로우
-        void progressRing.offsetHeight;
-        void progressCircle.offsetHeight;
+        // 이미지가 로드되었는지 확인
+        if (spinnerImage.complete) {
+            this.startRotationAnimation(spinnerImage);
+        } else {
+            spinnerImage.addEventListener('load', () => {
+                this.startRotationAnimation(spinnerImage);
+            }, { once: true });
+        }
+    },
+    
+    /**
+     * 회전 애니메이션 시작
+     */
+    startRotationAnimation(imageElement) {
+        // 강제 리플로우
+        void imageElement.offsetHeight;
         
-        // SVG 전체 회전 애니메이션 강제 시작
-        progressRing.style.animation = 'none';
-        void progressRing.offsetHeight; // 강제 리플로우
-        progressRing.style.animation = '';
-        progressRing.style.animationPlayState = 'running';
+        // 애니메이션 재시작 (모바일 호환성 향상)
+        imageElement.style.animation = 'none';
+        void imageElement.offsetHeight; // 강제 리플로우
         
-        // 파란색 원의 stroke-dashoffset 애니메이션 강제 시작
-        // 모바일 브라우저 호환성: 인라인 스타일을 제거하여 CSS 애니메이션이 작동하도록
-        progressCircle.style.strokeDasharray = '';
-        progressCircle.style.strokeDashoffset = '';
-        
-        // 애니메이션 재시작 (CSS 애니메이션만 사용)
+        // CSS 애니메이션 재시작
         requestAnimationFrame(() => {
-            // 애니메이션 재시작
-            progressCircle.style.animation = 'none';
-            void progressCircle.offsetHeight; // 강제 리플로우
-            
-            // CSS 애니메이션만 사용 (인라인 스타일 제거)
-            progressCircle.style.animation = '';
-            progressCircle.style.animationDelay = '';
-            progressCircle.style.animationPlayState = 'running';
+            imageElement.style.animation = '';
+            imageElement.style.animationPlayState = 'running';
             
             // 추가 강제 리플로우로 애니메이션 즉시 시작 보장
-            void progressCircle.offsetHeight;
+            void imageElement.offsetHeight;
         });
     }
 };
@@ -150,7 +147,7 @@ const LoadingManager = {
  * 페이지 전환 감지 및 이벤트 핸들러 설정
  */
 document.addEventListener('DOMContentLoaded', function() {
-    // 로딩 매니저 초기화 (이미 초기화되었을 수 있음)
+    // 로딩 매니저 초기화
     if (!LoadingManager.overlay || !LoadingManager.container) {
         LoadingManager.init();
     }
@@ -158,6 +155,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 페이지 로드 완료 시 로딩 오버레이 숨김
     LoadingManager.hide();
     
+    // 페이지 슬라이드 인 애니메이션 시작
+    LoadingManager.initSlideIn();
     // 숫자만 입력 가능하도록 제한 (사번, 비밀번호 입력 필드)
     const numberInputs = document.querySelectorAll('input[pattern="[0-9]{4}"]');
     numberInputs.forEach(input => {
@@ -183,7 +182,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     });
     
-    // 폼 제출 시 버튼 상태 변경 (로딩 오버레이는 즉시 초기화 함수에서 처리)
+    // 폼 제출 시 버튼 상태 변경
     const forms = document.querySelectorAll('form');
     forms.forEach(form => {
         form.addEventListener('submit', function(e) {
@@ -201,14 +200,11 @@ document.addEventListener('DOMContentLoaded', function() {
     LoadingManager.init();
     
     // 페이지 전환이 있었는지 확인하고 슬라이드 인 애니메이션 시작
-    // DOM이 준비되기 전에 실행하여 깜빡임 방지
     if (document.readyState === 'loading') {
-        // DOM이 아직 로드 중이면 DOMContentLoaded 대기
         document.addEventListener('DOMContentLoaded', function() {
             LoadingManager.initSlideIn();
         });
     } else {
-        // DOM이 이미 로드되었으면 즉시 실행
         LoadingManager.initSlideIn();
     }
     

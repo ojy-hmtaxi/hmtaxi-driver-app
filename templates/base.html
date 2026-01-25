@@ -9,15 +9,13 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <!-- 로딩 오버레이 및 원형 프로그레스 바 -->
+    <!-- 로딩 오버레이 및 스피너 -->
     <div id="loadingOverlay" class="loading-overlay" style="display: none;">
         <div class="loading-content">
-            <div class="progress-circle">
-                <svg class="progress-ring" width="120" height="120" viewBox="0 0 120 120">
-                    <circle class="progress-ring-circle-bg" cx="60" cy="60" r="54" fill="transparent" stroke="#ffffff" stroke-width="8"/>
-                    <circle class="progress-ring-circle" cx="60" cy="60" r="54" fill="transparent" stroke="#007bff" stroke-width="8" stroke-linecap="round"/>
-                </svg>
-            </div>
+            <img src="{{ url_for('static', filename='images/progress_spinner.png') }}" 
+                 alt="로딩 중" 
+                 class="progress-spinner-image" 
+                 id="progressSpinnerImage">
             <div class="loading-message">로딩 중 입니다.<br>잠시만 기다려 주세요.</div>
         </div>
     </div>
