@@ -43,29 +43,65 @@ const LoadingManager = {
      * 로딩 오버레이 숨김 및 페이지 슬라이드 인
      */
     hide() {
-        if (!this.isActive || !this.overlay || !this.container) return;
+        if (!this.overlay || !this.container) return;
         
         // 오버레이 숨김
-        this.overlay.classList.remove('show');
+        if (this.isActive) {
+            this.overlay.classList.remove('show');
+        }
         
-        // 페이지 슬라이드 인 애니메이션 시작 (약간의 지연 후)
         setTimeout(() => {
-            if (this.container) {
-                this.container.classList.add('slide-in-from-right');
+            if (this.overlay) {
+                this.overlay.style.display = 'none';
             }
-        }, 100);
-        
-        setTimeout(() => {
-            this.overlay.style.display = 'none';
             this.isActive = false;
-            
-            // 애니메이션 완료 후 클래스 제거
-            if (this.container) {
-                setTimeout(() => {
-                    this.container.classList.remove('slide-in-from-right');
-                }, 400);
-            }
         }, 300);
+    },
+    
+    /**
+     * 새 페이지 로드 시 슬라이드 인 애니메이션 시작
+     */
+    initSlideIn() {
+        if (!this.container) return;
+        
+        // 페이지 전환이 있었는지 확인
+        const hasTransition = sessionStorage.getItem('pageTransition') === 'true';
+        
+        if (hasTransition) {
+            // 플래그 제거
+            sessionStorage.removeItem('pageTransition');
+            
+            // 컨테이너를 초기에 오른쪽에 위치
+            this.container.style.transform = 'translateX(100%)';
+            
+            // 강제 리플로우 후 슬라이드 인 애니메이션 시작
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    this.container.classList.add('slide-in-from-right');
+                    
+                    // 애니메이션 완료 후 클래스 및 인라인 스타일 제거
+                    setTimeout(() => {
+                        this.container.classList.remove('slide-in-from-right');
+                        this.container.style.transform = '';
+                    }, 400);
+                });
+            });
+        }
+    },
+    
+    /**
+     * 프로그레스 바 애니메이션 강제 시작
+     */
+    ensureAnimation() {
+        if (!this.overlay) return;
+        
+        const progressCircle = this.overlay.querySelector('.progress-ring-circle');
+        if (progressCircle) {
+            // 애니메이션 재시작을 위해 클래스 제거 후 추가
+            progressCircle.style.animation = 'none';
+            void progressCircle.offsetHeight; // 강제 리플로우
+            progressCircle.style.animation = '';
+        }
     }
 };
 
@@ -105,7 +141,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     });
     
-    // 폼 제출 시 로딩 오버레이 표시 및 버튼 상태 변경
+    // 폼 제출 시 버튼 상태 변경 (로딩 오버레이는 즉시 초기화 함수에서 처리)
     const forms = document.querySelectorAll('form');
     forms.forEach(form => {
         form.addEventListener('submit', function(e) {
@@ -114,36 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 submitButton.disabled = true;
                 submitButton.textContent = '처리 중...';
             }
-            
-            // 로그아웃 폼은 제외
-            const formAction = form.getAttribute('action') || form.action || '';
-            if (!formAction.includes('/logout')) {
-                // 즉시 표시 (페이지 전환 전에 보이도록)
-                LoadingManager.show();
-            }
         });
-    });
-    
-    // 링크 클릭 시 로딩 오버레이 표시 (로그아웃 링크 제외)
-    document.addEventListener('click', function(e) {
-        const link = e.target.closest('a');
-        if (link && link.href && !link.href.startsWith('javascript:') && !link.href.startsWith('#')) {
-            // 로그아웃 링크는 제외
-            if (link.id === 'logoutBtn' || link.href.includes('/logout')) {
-                return;
-            }
-            
-            // 같은 도메인 내 링크만
-            try {
-                const linkUrl = new URL(link.href, window.location.origin);
-                const currentUrl = new URL(window.location.href);
-                if (linkUrl.origin === currentUrl.origin) {
-                    LoadingManager.show();
-                }
-            } catch (err) {
-                // URL 파싱 오류 시 무시
-            }
-        }
     });
 });
 
@@ -166,6 +173,39 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!formAction.includes('/logout')) {
                 LoadingManager.show();
             }
+        }
+    }, true); // capture phase에서 실행하여 더 빠르게 처리
+    
+    // 링크 클릭 이벤트를 즉시 등록 (DOMContentLoaded 전에도 작동)
+    document.addEventListener('click', function(e) {
+        const link = e.target.closest('a');
+        if (!link) return;
+        
+        // 로그아웃 링크는 제외
+        if (link.id === 'logoutBtn' || link.href.includes('/logout')) {
+            return;
+        }
+        
+        // 비활성화된 링크는 제외
+        if (link.getAttribute('aria-disabled') === 'true' || 
+            link.classList.contains('btn-disabled')) {
+            return;
+        }
+        
+        // href가 없거나 javascript:, #로 시작하는 경우 제외
+        if (!link.href || link.href.startsWith('javascript:') || link.href === '#') {
+            return;
+        }
+        
+        // 같은 도메인 내 링크만
+        try {
+            const linkUrl = new URL(link.href, window.location.origin);
+            const currentUrl = new URL(window.location.href);
+            if (linkUrl.origin === currentUrl.origin) {
+                LoadingManager.show();
+            }
+        } catch (err) {
+            // URL 파싱 오류 시 무시
         }
     }, true); // capture phase에서 실행하여 더 빠르게 처리
 })();

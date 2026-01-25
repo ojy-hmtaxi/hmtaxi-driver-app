@@ -1385,6 +1385,7 @@ body {
     width: 120px;
     height: 120px;
     animation: rotate 2s linear infinite;
+    will-change: transform;
 }
 
 .progress-ring-circle-bg {
@@ -1397,6 +1398,8 @@ body {
     stroke-dasharray: 339.3;
     stroke-dashoffset: 339.3;
     animation: progress-rotate 1.5s ease-in-out infinite;
+    will-change: stroke-dashoffset;
+    transform-origin: center;
 }
 
 @keyframes rotate {
