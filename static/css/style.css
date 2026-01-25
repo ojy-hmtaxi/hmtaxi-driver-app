@@ -10,23 +10,23 @@ body {
     background-color: #f5f5f5;
     color: #333;
     line-height: 1.6;
-    /* 모바일에서 상단 시스템 UI(상태 바) 공간 확보 */
-    padding-top: env(safe-area-inset-top);
-    /* 모바일에서 하단 네비게이션 바 공간 확보 */
-    padding-bottom: env(safe-area-inset-bottom);
+    /* 상단 여백 제거 */
+    padding-top: 0;
+    /* 하단 여백 제거 */
+    padding-bottom: 0;
 }
 
 .container {
     max-width: 100%;
     margin: 0 auto;
-    padding: 10px;
-    /* 모바일에서 상단 여백 최소화 (상태 바만 고려) */
-    padding-top: max(10px, env(safe-area-inset-top));
-    /* 하단 safe-area 제거 */
-    padding-bottom: 10px;
+    padding: 5px;
+    /* 상단 여백 최소화 */
+    padding-top: 0;
+    /* 하단 여백 제거 */
+    padding-bottom: 0;
     /* 모바일에서 최소 높이 보장 */
-    min-height: calc(100vh - 20px);
-    min-height: calc(100dvh - 20px);
+    min-height: 100vh;
+    min-height: 100dvh;
 }
 
 /* 알림 메시지 */
@@ -1177,34 +1177,38 @@ body {
 /* 모바일 반응형 */
 @media (max-width: 768px) {
     body {
-        /* 모바일에서 상단 시스템 UI(상태 바) 최소 공간만 확보 */
+        /* 상단 여백 제거 */
         padding-top: 0;
-        /* 하단 safe-area 제거 */
+        /* 하단 여백 제거 */
         padding-bottom: 0;
     }
     
     .container {
-        padding: 5px;
-        /* 모바일에서 상단 여백 최소화 (상태 바만 고려) */
-        padding-top: max(5px, env(safe-area-inset-top));
-        /* 하단 safe-area 제거 */
-        padding-bottom: 5px;
+        padding: 0;
+        /* 상단 여백 최소화 */
+        padding-top: 0;
+        /* 하단 여백 제거 */
+        padding-bottom: 0;
     }
     
     .calendar-container {
         /* 캘린더 컨테이너 상단 여백 최소화 */
-        padding-top: max(20px, env(safe-area-inset-top));
+        padding-top: 10px;
+        /* 하단 여백 제거 */
+        padding-bottom: 10px;
     }
     
     .header {
-        /* 헤더 상단 여백 최소화 */
-        margin-top: max(0px, env(safe-area-inset-top));
+        /* 헤더 상단 여백 제거 */
+        margin-top: 0;
+        margin-bottom: 10px;
     }
     
     .login-container {
-        /* 로그인 컨테이너 상단 여백 최소화 */
-        padding-top: max(10px, env(safe-area-inset-top));
-        padding-bottom: 10px;
+        /* 로그인 컨테이너 상단 여백 제거 */
+        padding-top: 5px;
+        /* 하단 여백 제거 */
+        padding-bottom: 0;
         /* 모든 요소가 한 화면에 보이도록 */
         align-items: flex-start;
         justify-content: center;
@@ -1526,8 +1530,8 @@ body {
     }
     
     .container {
-        /* 모바일에서 하단 여백 추가 (네비게이션 바 공간 확보) */
-        padding-bottom: max(20px, env(safe-area-inset-bottom));
+        /* 하단 여백 제거 */
+        padding-bottom: 0;
         min-height: 100vh;
         min-height: 100dvh;
         min-height: -webkit-fill-available;

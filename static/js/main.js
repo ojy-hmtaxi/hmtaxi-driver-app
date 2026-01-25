@@ -228,29 +228,18 @@ const MobileBrowserUI = {
     },
     
     /**
-     * 상태 바 높이 감지 및 상단 여백 설정 (최소화)
+     * 상태 바 높이 감지 및 상단 여백 설정 (제거)
      */
     setStatusBarPadding() {
-        // iOS Safari에서 safe-area-inset-top 사용 (최소값만)
-        const safeAreaTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-top')) || 0;
+        // 상단 여백 제거
+        document.body.style.paddingTop = '0px';
+        document.body.style.paddingBottom = '0px';
         
-        // 모바일에서 상태 바 높이 감지 (최소값만 사용)
-        const isMobile = window.innerWidth <= 768;
-        const statusBarHeight = isMobile ? Math.max(safeAreaTop, 0) : 0;
-        
-        // body에 상단 여백 설정 (최소값만)
-        if (statusBarHeight > 0) {
-            document.body.style.paddingTop = `${statusBarHeight}px`;
-            document.documentElement.style.setProperty('--status-bar-height', `${statusBarHeight}px`);
-        } else {
-            document.body.style.paddingTop = '0px';
-        }
-        
-        // container에도 상단 여백 추가 (최소값만)
+        // container 여백 제거
         const container = document.getElementById('mainContainer');
-        if (container && isMobile) {
-            const containerPaddingTop = Math.max(5, safeAreaTop);
-            container.style.paddingTop = `${containerPaddingTop}px`;
+        if (container) {
+            container.style.paddingTop = '0px';
+            container.style.paddingBottom = '0px';
         }
     },
     
