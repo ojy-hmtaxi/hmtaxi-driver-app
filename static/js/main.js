@@ -228,28 +228,27 @@ const MobileBrowserUI = {
     },
     
     /**
-     * 상태 바 높이 감지 및 상단 여백 설정
+     * 상태 바 높이 감지 및 상단 여백 설정 (최소화)
      */
     setStatusBarPadding() {
-        // iOS Safari에서 safe-area-inset-top 사용
-        const safeAreaTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-top')) || 
-                           parseInt(getComputedStyle(document.body).paddingTop) || 0;
+        // iOS Safari에서 safe-area-inset-top만 사용 (추가 여백 없음)
+        const safeAreaTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-top')) || 0;
         
-        // 모바일에서 상태 바 높이 감지 (약 24-44px)
+        // 모바일에서만 최소한의 여백 설정 (CSS에서 이미 처리하므로 JavaScript는 최소화)
         const isMobile = window.innerWidth <= 768;
-        const statusBarHeight = isMobile ? Math.max(safeAreaTop, 24) : 0;
         
-        // body에 상단 여백 설정
-        if (statusBarHeight > 0) {
-            document.body.style.paddingTop = `${statusBarHeight}px`;
-            document.documentElement.style.setProperty('--status-bar-height', `${statusBarHeight}px`);
+        // CSS 변수만 설정 (실제 여백은 CSS에서 처리)
+        if (isMobile && safeAreaTop > 0) {
+            document.documentElement.style.setProperty('--status-bar-height', `${safeAreaTop}px`);
+        } else {
+            document.documentElement.style.setProperty('--status-bar-height', '0px');
         }
         
-        // container에도 상단 여백 추가
+        // body와 container의 인라인 스타일 제거 (CSS가 우선하도록)
+        document.body.style.paddingTop = '';
         const container = document.getElementById('mainContainer');
-        if (container && isMobile) {
-            const containerPaddingTop = Math.max(parseInt(getComputedStyle(container).paddingTop) || 10, statusBarHeight + 5);
-            container.style.paddingTop = `${containerPaddingTop}px`;
+        if (container) {
+            container.style.paddingTop = '';
         }
     },
     
