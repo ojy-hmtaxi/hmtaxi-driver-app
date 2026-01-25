@@ -12,8 +12,8 @@ body {
     line-height: 1.6;
     /* 상단 여백 제거 */
     padding-top: 0;
-    /* 하단 여백 제거 */
-    padding-bottom: 0;
+    /* 하단 safe-area 적용 (하단 잘림 방지) */
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
 .container {
@@ -22,8 +22,8 @@ body {
     padding: 5px;
     /* 상단 여백 최소화 */
     padding-top: 0;
-    /* 하단 여백 제거 */
-    padding-bottom: 0;
+    /* 하단 safe-area 적용 (하단 잘림 방지) */
+    padding-bottom: env(safe-area-inset-bottom);
     /* 모바일에서 최소 높이 보장 */
     min-height: 100vh;
     min-height: 100dvh;
@@ -264,6 +264,7 @@ body {
 .calendar-container {
     background: white;
     padding: 15px;
+    padding-bottom: calc(15px + env(safe-area-inset-bottom));
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     margin-bottom: 10px;
@@ -359,6 +360,8 @@ body {
     gap: 10px;
     margin-top: 15px;
     margin-bottom: 0;
+    /* 하단 safe-area 적용 (버튼이 잘리지 않도록) */
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
 .navigation .btn {
@@ -1181,8 +1184,8 @@ body {
     body {
         /* 상단 여백 제거 */
         padding-top: 0;
-        /* 하단 여백 제거 */
-        padding-bottom: 0;
+        /* 하단 safe-area 적용 (하단 잘림 방지) */
+        padding-bottom: env(safe-area-inset-bottom);
     }
     
     .container {
@@ -1190,7 +1193,7 @@ body {
         /* 상단 여백 최소화 */
         padding-top: 0;
         /* 하단 여백 제거 */
-        padding-bottom: 0;
+        padding-bottom: env(safe-area-inset-bottom);
     }
     
     .calendar-container {
@@ -1562,7 +1565,7 @@ body {
     
     .container {
         /* 하단 여백 제거 */
-        padding-bottom: 0;
+        padding-bottom: env(safe-area-inset-bottom);
         min-height: 100vh;
         min-height: 100dvh;
         min-height: -webkit-fill-available;
