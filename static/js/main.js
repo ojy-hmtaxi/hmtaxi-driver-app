@@ -143,16 +143,35 @@ const LoadingManager = {
         void imageElement.offsetHeight;
         
         // 애니메이션 재시작 (모바일 호환성 향상)
+        // 인라인 스타일 제거하여 CSS 애니메이션이 작동하도록
         imageElement.style.animation = 'none';
+        imageElement.style.webkitAnimation = 'none';
         void imageElement.offsetHeight; // 강제 리플로우
         
-        // CSS 애니메이션 재시작
+        // CSS 애니메이션 재시작 (명시적으로 설정)
         requestAnimationFrame(() => {
-            imageElement.style.animation = '';
-            imageElement.style.animationPlayState = 'running';
-            
-            // 추가 강제 리플로우로 애니메이션 즉시 시작 보장
-            void imageElement.offsetHeight;
+            requestAnimationFrame(() => {
+                // 인라인 스타일 제거하여 CSS가 적용되도록
+                imageElement.style.animation = '';
+                imageElement.style.webkitAnimation = '';
+                imageElement.style.animationPlayState = 'running';
+                imageElement.style.webkitAnimationPlayState = 'running';
+                
+                // 추가 강제 리플로우로 애니메이션 즉시 시작 보장
+                void imageElement.offsetHeight;
+                
+                // 모바일 브라우저에서 애니메이션이 시작되었는지 확인
+                const computedStyle = window.getComputedStyle(imageElement);
+                const animationName = computedStyle.animationName || computedStyle.webkitAnimationName;
+                
+                if (animationName === 'none' || animationName === '') {
+                    // 애니메이션이 적용되지 않았으면 강제로 재설정
+                    imageElement.style.animation = 'rotate 2s linear infinite';
+                    imageElement.style.webkitAnimation = 'rotate 2s linear infinite';
+                    imageElement.style.animationPlayState = 'running';
+                    imageElement.style.webkitAnimationPlayState = 'running';
+                }
+            });
         });
     }
 };

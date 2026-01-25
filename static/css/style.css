@@ -1382,7 +1382,11 @@ body {
 .progress-spinner-image {
     width: 120px;
     height: 120px;
+    /* 모바일 브라우저 호환성을 위한 명시적 애니메이션 설정 */
     animation: rotate 2s linear infinite;
+    -webkit-animation: rotate 2s linear infinite;
+    animation-play-state: running;
+    -webkit-animation-play-state: running;
     /* 모바일 브라우저에서 하드웨어 가속 강제 */
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
@@ -1393,16 +1397,35 @@ body {
     image-rendering: -webkit-optimize-contrast;
     image-rendering: crisp-edges;
     display: block;
+    /* 모바일에서 이미지가 항상 보이도록 */
+    opacity: 1;
+    visibility: visible;
+    /* 모바일에서 레이어 최적화 */
+    will-change: transform;
+    /* 이미지 로드 전에도 공간 확보 */
+    min-width: 120px;
+    min-height: 120px;
 }
 
 @keyframes rotate {
-    from {
+    0% {
         transform: rotate(0deg) translateZ(0);
         -webkit-transform: rotate(0deg) translateZ(0);
     }
-    to {
+    100% {
         transform: rotate(360deg) translateZ(0);
         -webkit-transform: rotate(360deg) translateZ(0);
+    }
+}
+
+@-webkit-keyframes rotate {
+    0% {
+        -webkit-transform: rotate(0deg) translateZ(0);
+        transform: rotate(0deg) translateZ(0);
+    }
+    100% {
+        -webkit-transform: rotate(360deg) translateZ(0);
+        transform: rotate(360deg) translateZ(0);
     }
 }
 
@@ -1449,6 +1472,11 @@ body {
         /* 모바일에서 강제 표시 */
         opacity: 1 !important;
         visibility: visible !important;
+        /* 모바일에서 애니메이션 강제 적용 */
+        animation: rotate 2s linear infinite !important;
+        -webkit-animation: rotate 2s linear infinite !important;
+        animation-play-state: running !important;
+        -webkit-animation-play-state: running !important;
     }
     
     .loading-message {
