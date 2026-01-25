@@ -231,24 +231,26 @@ const MobileBrowserUI = {
      * 상태 바 높이 감지 및 상단 여백 설정 (최소화)
      */
     setStatusBarPadding() {
-        // iOS Safari에서 safe-area-inset-top만 사용 (추가 여백 없음)
+        // iOS Safari에서 safe-area-inset-top 사용 (최소값만)
         const safeAreaTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-top')) || 0;
         
-        // 모바일에서만 최소한의 여백 설정 (CSS에서 이미 처리하므로 JavaScript는 최소화)
+        // 모바일에서 상태 바 높이 감지 (최소값만 사용)
         const isMobile = window.innerWidth <= 768;
+        const statusBarHeight = isMobile ? Math.max(safeAreaTop, 0) : 0;
         
-        // CSS 변수만 설정 (실제 여백은 CSS에서 처리)
-        if (isMobile && safeAreaTop > 0) {
-            document.documentElement.style.setProperty('--status-bar-height', `${safeAreaTop}px`);
+        // body에 상단 여백 설정 (최소값만)
+        if (statusBarHeight > 0) {
+            document.body.style.paddingTop = `${statusBarHeight}px`;
+            document.documentElement.style.setProperty('--status-bar-height', `${statusBarHeight}px`);
         } else {
-            document.documentElement.style.setProperty('--status-bar-height', '0px');
+            document.body.style.paddingTop = '0px';
         }
         
-        // body와 container의 인라인 스타일 제거 (CSS가 우선하도록)
-        document.body.style.paddingTop = '';
+        // container에도 상단 여백 추가 (최소값만)
         const container = document.getElementById('mainContainer');
-        if (container) {
-            container.style.paddingTop = '';
+        if (container && isMobile) {
+            const containerPaddingTop = Math.max(5, safeAreaTop);
+            container.style.paddingTop = `${containerPaddingTop}px`;
         }
     },
     
@@ -450,4 +452,70 @@ async function updateWorkStatus(day) {
         alert('오류가 발생했습니다.');
     }
 }
+
+/**
+ * 모바일 키보드 처리 - 입력 필드가 키보드에 가려지지 않도록
+ */
+(function() {
+    // 로그인 페이지에서만 작동
+    if (!document.querySelector('.login-container')) return;
+    
+    const inputFields = document.querySelectorAll('.login-box input[type="text"], .login-box input[type="password"]');
+    
+    inputFields.forEach(input => {
+        // 포커스 시 (키보드가 올라올 때)
+        input.addEventListener('focus', function() {
+            // 약간의 지연 후 스크롤 (키보드 애니메이션 완료 대기)
+            setTimeout(() => {
+                // 입력 필드가 화면에 보이도록 스크롤
+                const inputRect = input.getBoundingClientRect();
+                const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+                const keyboardHeight = viewportHeight - (window.visualViewport?.height || viewportHeight);
+                
+                // 입력 필드가 키보드에 가려지는지 확인
+                if (inputRect.bottom > (window.visualViewport?.height || viewportHeight) - keyboardHeight) {
+                    // 입력 필드가 키보드 위에 보이도록 스크롤
+                    const scrollAmount = inputRect.bottom - (window.visualViewport?.height || viewportHeight) + keyboardHeight + 20;
+                    
+                    // 부모 요소(login-box)를 스크롤하거나, window를 스크롤
+                    const loginBox = input.closest('.login-box');
+                    if (loginBox) {
+                        loginBox.scrollTop += scrollAmount;
+                    } else {
+                        window.scrollTo({
+                            top: window.scrollY + scrollAmount,
+                            behavior: 'smooth'
+                        });
+                    }
+                }
+            }, 300); // 키보드 애니메이션 대기 시간
+        });
+        
+        // 블러 시 (키보드가 내려갈 때) - 필요시 스크롤 복원
+        input.addEventListener('blur', function() {
+            // 키보드가 내려가면 자동으로 스크롤이 복원됨
+        });
+    });
+    
+    // visualViewport API 지원 시 (모바일 브라우저)
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            // 키보드가 올라오거나 내려갈 때 입력 필드가 보이도록 조정
+            const activeInput = document.activeElement;
+            if (activeInput && (activeInput.tagName === 'INPUT' || activeInput.tagName === 'TEXTAREA')) {
+                const inputRect = activeInput.getBoundingClientRect();
+                const viewportHeight = window.visualViewport.height;
+                
+                // 입력 필드가 뷰포트 밖에 있으면 스크롤
+                if (inputRect.bottom > viewportHeight) {
+                    const scrollAmount = inputRect.bottom - viewportHeight + 20;
+                    const loginBox = activeInput.closest('.login-box');
+                    if (loginBox) {
+                        loginBox.scrollTop += scrollAmount;
+                    }
+                }
+            }
+        });
+    }
+})();
 
