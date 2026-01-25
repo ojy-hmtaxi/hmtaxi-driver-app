@@ -1404,6 +1404,8 @@ body {
     transform-origin: center;
     /* 애니메이션이 즉시 시작되도록 보장 */
     animation-play-state: running;
+    /* 애니메이션 시작 지점을 조정하여 즉시 보이도록 */
+    animation-delay: 0s;
 }
 
 @keyframes rotate {
@@ -1419,8 +1421,14 @@ body {
     0% {
         stroke-dashoffset: 339.3;
     }
+    25% {
+        stroke-dashoffset: 254.5;
+    }
     50% {
         stroke-dashoffset: 169.65;
+    }
+    75% {
+        stroke-dashoffset: 254.5;
     }
     100% {
         stroke-dashoffset: 339.3;
