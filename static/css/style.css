@@ -10,6 +10,17 @@ body {
     background-color: #f5f5f5;
     color: #333;
     line-height: 1.6;
+    /* 모바일 브라우저 UI 숨김 최적화 */
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    /* iOS Safari 주소창 영역 고려 */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    /* 스크롤 시 주소창 자동 숨김 */
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
 }
 
 .container {
@@ -1459,6 +1470,25 @@ body {
 
 /* 모바일 스타일 */
 @media (max-width: 768px) {
+    html {
+        /* 모바일 브라우저 주소창 숨김 최적화 */
+        height: -webkit-fill-available;
+        /* 스크롤 시 주소창 자동 숨김 */
+        scroll-behavior: smooth;
+        /* iOS Safari 주소창 영역 고려 */
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    
+    body {
+        /* 모바일에서 전체 화면 사용 (스크롤 가능) */
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        /* 스크롤 시 주소창 자동 숨김을 위한 최소 높이 */
+        min-height: calc(100vh + 100px);
+    }
+    
     .loading-overlay {
         /* 모바일에서 z-index를 더 높게 */
         z-index: 999999;

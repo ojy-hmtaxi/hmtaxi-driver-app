@@ -177,6 +177,51 @@ const LoadingManager = {
 };
 
 /**
+ * 모바일 브라우저 UI 숨김 최적화
+ */
+(function() {
+    // iOS Safari 주소창 자동 숨김
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        // 스크롤 시 주소창 숨김
+        let lastScrollTop = 0;
+        window.addEventListener('scroll', function() {
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            if (Math.abs(lastScrollTop - scrollTop) > 5) {
+                // 스크롤이 발생하면 주소창이 자동으로 숨겨짐
+                lastScrollTop = scrollTop;
+            }
+        }, { passive: true });
+        
+        // 초기 높이 설정
+        function setViewportHeight() {
+            const vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+        }
+        setViewportHeight();
+        window.addEventListener('resize', setViewportHeight);
+        window.addEventListener('orientationchange', function() {
+            setTimeout(setViewportHeight, 100);
+        });
+    }
+    
+    // Android Chrome 주소창 숨김
+    if (/Android/.test(navigator.userAgent)) {
+        // 스크롤 시 주소창 숨김
+        window.addEventListener('scroll', function() {
+            // 스크롤이 발생하면 주소창이 자동으로 숨겨짐
+        }, { passive: true });
+    }
+    
+    // PWA 설치 프롬프트 (선택사항)
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        // PWA 설치 프롬프트를 나중에 사용할 수 있도록 저장
+        deferredPrompt = e;
+        // 필요시 설치 버튼 표시 로직 추가 가능
+    });
+})();
+
+/**
  * 페이지 전환 감지 및 이벤트 핸들러 설정
  */
 document.addEventListener('DOMContentLoaded', function() {
