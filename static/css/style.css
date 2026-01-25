@@ -1386,6 +1386,8 @@ body {
     height: 120px;
     animation: rotate 2s linear infinite;
     will-change: transform;
+    /* 애니메이션이 즉시 시작되도록 보장 */
+    animation-play-state: running;
 }
 
 .progress-ring-circle-bg {
@@ -1400,6 +1402,8 @@ body {
     animation: progress-rotate 1.5s ease-in-out infinite;
     will-change: stroke-dashoffset;
     transform-origin: center;
+    /* 애니메이션이 즉시 시작되도록 보장 */
+    animation-play-state: running;
 }
 
 @keyframes rotate {
@@ -1416,7 +1420,7 @@ body {
         stroke-dashoffset: 339.3;
     }
     50% {
-        stroke-dashoffset: 84.8;
+        stroke-dashoffset: 169.65;
     }
     100% {
         stroke-dashoffset: 339.3;
@@ -1433,7 +1437,7 @@ body {
 
 /* 페이지 슬라이드 인 애니메이션 */
 .container {
-    will-change: transform;
+    will-change: transform, opacity;
 }
 
 .container.slide-in-from-right {
@@ -1443,9 +1447,11 @@ body {
 @keyframes slideInFromRight {
     from {
         transform: translateX(100%);
+        opacity: 0;
     }
     to {
         transform: translateX(0);
+        opacity: 1;
     }
 }
 

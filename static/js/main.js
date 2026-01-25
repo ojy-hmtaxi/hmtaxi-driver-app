@@ -37,6 +37,9 @@ const LoadingManager = {
         
         // 강제 리플로우로 즉시 렌더링
         void this.overlay.offsetHeight;
+        
+        // 프로그레스 바 애니메이션 강제 시작
+        this.ensureAnimation();
     },
     
     /**
@@ -62,7 +65,11 @@ const LoadingManager = {
      * 새 페이지 로드 시 슬라이드 인 애니메이션 시작
      */
     initSlideIn() {
-        if (!this.container) return;
+        if (!this.container) {
+            // 컨테이너가 아직 없으면 재시도
+            setTimeout(() => this.initSlideIn(), 10);
+            return;
+        }
         
         // 페이지 전환이 있었는지 확인
         const hasTransition = sessionStorage.getItem('pageTransition') === 'true';
@@ -71,20 +78,23 @@ const LoadingManager = {
             // 플래그 제거
             sessionStorage.removeItem('pageTransition');
             
-            // 컨테이너를 초기에 오른쪽에 위치
+            // 컨테이너를 초기에 오른쪽에 위치하고 숨김 (즉시 실행)
             this.container.style.transform = 'translateX(100%)';
+            this.container.style.opacity = '0';
             
-            // 강제 리플로우 후 슬라이드 인 애니메이션 시작
+            // 강제 리플로우로 초기 상태 적용
+            void this.container.offsetHeight;
+            
+            // 슬라이드 인 애니메이션 시작
             requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    this.container.classList.add('slide-in-from-right');
-                    
-                    // 애니메이션 완료 후 클래스 및 인라인 스타일 제거
-                    setTimeout(() => {
-                        this.container.classList.remove('slide-in-from-right');
-                        this.container.style.transform = '';
-                    }, 400);
-                });
+                this.container.classList.add('slide-in-from-right');
+                
+                // 애니메이션 완료 후 클래스 및 인라인 스타일 제거
+                setTimeout(() => {
+                    this.container.classList.remove('slide-in-from-right');
+                    this.container.style.transform = '';
+                    this.container.style.opacity = '';
+                }, 400);
             });
         }
     },
@@ -95,12 +105,24 @@ const LoadingManager = {
     ensureAnimation() {
         if (!this.overlay) return;
         
+        const progressRing = this.overlay.querySelector('.progress-ring');
         const progressCircle = this.overlay.querySelector('.progress-ring-circle');
-        if (progressCircle) {
-            // 애니메이션 재시작을 위해 클래스 제거 후 추가
+        
+        if (progressRing && progressCircle) {
+            // SVG 전체 회전 애니메이션 강제 시작
+            progressRing.style.animation = 'none';
+            void progressRing.offsetHeight; // 강제 리플로우
+            progressRing.style.animation = 'rotate 2s linear infinite';
+            
+            // 파란색 원의 stroke-dashoffset 애니메이션 강제 시작
             progressCircle.style.animation = 'none';
             void progressCircle.offsetHeight; // 강제 리플로우
-            progressCircle.style.animation = '';
+            progressCircle.style.animation = 'progress-rotate 1.5s ease-in-out infinite';
+            
+            // stroke-dasharray와 stroke-dashoffset 초기값 명시적 설정
+            const circumference = 2 * Math.PI * 54; // r=54
+            progressCircle.style.strokeDasharray = circumference.toString();
+            progressCircle.style.strokeDashoffset = circumference.toString();
         }
     }
 };
@@ -109,12 +131,13 @@ const LoadingManager = {
  * 페이지 전환 감지 및 이벤트 핸들러 설정
  */
 document.addEventListener('DOMContentLoaded', function() {
-    // 로딩 매니저 초기화
-    LoadingManager.init();
+    // 로딩 매니저 초기화 (이미 초기화되었을 수 있음)
+    if (!LoadingManager.overlay || !LoadingManager.container) {
+        LoadingManager.init();
+    }
     
-    // 페이지 로드 완료 시 로딩 오버레이 숨김 및 슬라이드 인 애니메이션
+    // 페이지 로드 완료 시 로딩 오버레이 숨김
     LoadingManager.hide();
-    LoadingManager.initSlideIn();
     
     // 숫자만 입력 가능하도록 제한 (사번, 비밀번호 입력 필드)
     const numberInputs = document.querySelectorAll('input[pattern="[0-9]{4}"]');
@@ -157,6 +180,18 @@ document.addEventListener('DOMContentLoaded', function() {
 // 즉시 초기화 (DOMContentLoaded 전에도 작동하도록)
 (function() {
     LoadingManager.init();
+    
+    // 페이지 전환이 있었는지 확인하고 슬라이드 인 애니메이션 시작
+    // DOM이 준비되기 전에 실행하여 깜빡임 방지
+    if (document.readyState === 'loading') {
+        // DOM이 아직 로드 중이면 DOMContentLoaded 대기
+        document.addEventListener('DOMContentLoaded', function() {
+            LoadingManager.initSlideIn();
+        });
+    } else {
+        // DOM이 이미 로드되었으면 즉시 실행
+        LoadingManager.initSlideIn();
+    }
     
     // 폼 제출 이벤트를 즉시 등록 (DOMContentLoaded 전에도 작동)
     document.addEventListener('submit', function(e) {
