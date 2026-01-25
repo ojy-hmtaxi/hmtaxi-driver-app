@@ -263,10 +263,10 @@ body {
 /* 캘린더 페이지 */
 .calendar-container {
     background: white;
-    padding: 20px;
+    padding: 15px;
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    margin-bottom: 20px;
+    margin-bottom: 10px;
 }
 
 .header {
@@ -356,9 +356,9 @@ body {
 .navigation {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin-top: 20px;
-    margin-bottom: 10px;
+    gap: 10px;
+    margin-top: 15px;
+    margin-bottom: 0;
 }
 
 .navigation .btn {
@@ -408,12 +408,12 @@ body {
 }
 
 .calendar-wrapper {
-    margin-top: 20px;
+    margin-top: 10px;
 }
 
 .calendar-header {
     text-align: center;
-    margin-bottom: 20px;
+    margin-bottom: 15px;
 }
 
 .month-navigation {
@@ -571,7 +571,8 @@ body {
     display: flex;
     justify-content: center;
     gap: 10px;
-    margin-bottom: 20px;
+    margin-bottom: 10px;
+    margin-top: 10px;
     flex-wrap: nowrap;
 }
 
@@ -586,10 +587,11 @@ body {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 15px;
-    padding: 15px;
+    padding: 12px;
     background-color: #f5f6f8;
     border-radius: 4px;
-    margin-top: 20px;
+    margin-top: 15px;
+    margin-bottom: 0;
 }
 
 .summary-item {
@@ -1193,15 +1195,31 @@ body {
     
     .calendar-container {
         /* 캘린더 컨테이너 상단 여백 최소화 */
-        padding-top: 10px;
+        padding-top: 5px;
+        padding-left: 10px;
+        padding-right: 10px;
         /* 하단 여백 제거 */
-        padding-bottom: 10px;
+        padding-bottom: 5px;
+        margin-bottom: 5px;
     }
     
     .header {
         /* 헤더 상단 여백 제거 */
         margin-top: 0;
+        margin-bottom: 5px;
+    }
+    
+    .calendar-wrapper {
+        margin-top: 5px;
+    }
+    
+    .calendar-header {
         margin-bottom: 10px;
+    }
+    
+    .navigation {
+        margin-top: 10px;
+        margin-bottom: 0;
     }
     
     .login-container {
@@ -1281,12 +1299,23 @@ body {
     }
     
     .legend {
-        gap: 15px;
+        gap: 8px;
+        margin-bottom: 8px;
+        margin-top: 8px;
     }
     
     .summary {
         grid-template-columns: repeat(2, 1fr);
-        gap: 15px;
+        gap: 10px;
+        padding: 10px;
+        margin-top: 10px;
+        margin-bottom: 0;
+    }
+    
+    .legend {
+        margin-bottom: 8px;
+        margin-top: 8px;
+        gap: 8px;
     }
     
     .month-navigation {
