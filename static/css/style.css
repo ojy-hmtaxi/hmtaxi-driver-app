@@ -1345,68 +1345,125 @@ body {
     }
 }
 
-/* 원형 프로그레스 바 */
-.page-progress-bar {
+/* 로딩 오버레이 및 원형 프로그레스 바 */
+.loading-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: rgba(0, 0, 0, 0.5);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 9999;
-    pointer-events: none;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.loading-overlay.show {
+    opacity: 1;
+}
+
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
 }
 
 .progress-circle {
     position: relative;
-    width: 90px;
-    height: 90px;
+    width: 120px;
+    height: 120px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .progress-ring {
-    transform: rotate(-90deg);
-    width: 90px;
-    height: 90px;
+    width: 120px;
+    height: 120px;
+    animation: rotate 2s linear infinite;
+}
+
+.progress-ring-circle-bg {
+    stroke: #ffffff;
+    opacity: 0.3;
 }
 
 .progress-ring-circle {
-    stroke-dasharray: 257.5;
-    stroke-dashoffset: 257.5;
-    /* transition 제거: JavaScript에서 직접 제어 */
+    stroke: #007bff;
+    stroke-dasharray: 339.3;
+    stroke-dashoffset: 339.3;
+    animation: progress-rotate 1.5s ease-in-out infinite;
 }
 
-.progress-text {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 20px;
-    font-weight: bold;
-    color: #007bff;
-    line-height: 1;
-    margin: 0;
-    padding: 0;
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes progress-rotate {
+    0% {
+        stroke-dashoffset: 339.3;
+    }
+    50% {
+        stroke-dashoffset: 84.8;
+    }
+    100% {
+        stroke-dashoffset: 339.3;
+    }
+}
+
+.loading-message {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 500;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* 페이지 슬라이드 인 애니메이션 */
+.container {
+    transition: transform 0.4s ease-out;
+    will-change: transform;
+}
+
+.container.slide-in-from-right {
+    animation: slideInFromRight 0.4s ease-out forwards;
+}
+
+@keyframes slideInFromRight {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+    }
 }
 
 /* 모바일 스타일 */
 @media (max-width: 768px) {
     .progress-circle {
-        width: 90px;
-        height: 90px;
+        width: 100px;
+        height: 100px;
     }
     
     .progress-ring {
-        width: 90px;
-        height: 90px;
+        width: 100px;
+        height: 100px;
     }
     
-    .progress-text {
-        font-size: 18px;
+    .loading-message {
+        font-size: 14px;
+    }
+    
+    .loading-content {
+        gap: 20px;
     }
 }
