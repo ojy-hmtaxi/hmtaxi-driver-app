@@ -29,10 +29,14 @@ const LoadingManager = {
         this.isActive = true;
         this.overlay.style.display = 'flex';
         
-        // 강제 리플로우 후 opacity 전환
-        requestAnimationFrame(() => {
-            this.overlay.classList.add('show');
-        });
+        // 페이지 전환 플래그 설정 (새 페이지에서 슬라이드 인 애니메이션을 위해)
+        sessionStorage.setItem('pageTransition', 'true');
+        
+        // 즉시 표시 (모바일에서 빠른 페이지 전환 대응)
+        this.overlay.classList.add('show');
+        
+        // 강제 리플로우로 즉시 렌더링
+        void this.overlay.offsetHeight;
     },
     
     /**
@@ -72,11 +76,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // 로딩 매니저 초기화
     LoadingManager.init();
     
-    // 페이지 로드 완료 시 로딩 오버레이 숨김
-    // (페이지 전환으로 인한 로드인 경우에만 슬라이드 인 애니메이션 적용)
-    if (LoadingManager.isActive) {
-        LoadingManager.hide();
-    }
+    // 페이지 로드 완료 시 로딩 오버레이 숨김 및 슬라이드 인 애니메이션
+    LoadingManager.hide();
+    LoadingManager.initSlideIn();
     
     // 숫자만 입력 가능하도록 제한 (사번, 비밀번호 입력 필드)
     const numberInputs = document.querySelectorAll('input[pattern="[0-9]{4}"]');
@@ -114,7 +116,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // 로그아웃 폼은 제외
-            if (!form.action.includes('/logout')) {
+            const formAction = form.getAttribute('action') || form.action || '';
+            if (!formAction.includes('/logout')) {
+                // 즉시 표시 (페이지 전환 전에 보이도록)
                 LoadingManager.show();
             }
         });
@@ -142,6 +146,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// 즉시 초기화 (DOMContentLoaded 전에도 작동하도록)
+(function() {
+    LoadingManager.init();
+    
+    // 폼 제출 이벤트를 즉시 등록 (DOMContentLoaded 전에도 작동)
+    document.addEventListener('submit', function(e) {
+        const form = e.target;
+        if (form.tagName === 'FORM') {
+            const submitButton = form.querySelector('button[type="submit"]');
+            if (submitButton && !submitButton.disabled) {
+                submitButton.disabled = true;
+                submitButton.textContent = '처리 중...';
+            }
+            
+            // 로그아웃 폼은 제외
+            const formAction = form.getAttribute('action') || form.action || '';
+            if (!formAction.includes('/logout')) {
+                LoadingManager.show();
+            }
+        }
+    }, true); // capture phase에서 실행하여 더 빠르게 처리
+})();
 
 // 근무시작 버튼 클릭 시 확인
 function confirmWorkStart() {
