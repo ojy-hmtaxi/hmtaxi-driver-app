@@ -1385,9 +1385,12 @@ body {
     width: 120px;
     height: 120px;
     animation: rotate 2s linear infinite;
-    will-change: transform;
+    /* 모바일 호환성: will-change 제거 (모바일에서 문제를 일으킬 수 있음) */
     /* 애니메이션이 즉시 시작되도록 보장 */
     animation-play-state: running;
+    /* 모바일 브라우저에서 하드웨어 가속 강제 */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
 .progress-ring-circle-bg {
@@ -1400,12 +1403,15 @@ body {
     stroke-dasharray: 339.3;
     stroke-dashoffset: 339.3;
     animation: progress-rotate 1.5s ease-in-out infinite;
-    will-change: stroke-dashoffset;
+    /* 모바일 호환성: will-change 제거 (모바일에서 문제를 일으킬 수 있음) */
     transform-origin: center;
     /* 애니메이션이 즉시 시작되도록 보장 */
     animation-play-state: running;
     /* 애니메이션 시작 지점을 조정하여 즉시 보이도록 */
     animation-delay: 0s;
+    /* 모바일 브라우저에서 하드웨어 가속 강제 */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
 @keyframes rotate {
@@ -1481,5 +1487,23 @@ body {
     
     .loading-content {
         gap: 20px;
+    }
+    
+    /* 모바일에서 SVG 애니메이션 최적화 */
+    .progress-ring-circle {
+        /* 모바일에서 하드웨어 가속 강제 */
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+        /* 모바일에서 애니메이션 성능 향상 */
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+    }
+    
+    .progress-ring {
+        /* 모바일에서 회전 애니메이션 최적화 */
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
     }
 }

@@ -114,44 +114,34 @@ const LoadingManager = {
             return;
         }
         
-        // 둘레 계산 (정확한 값)
-        const circumference = 2 * Math.PI * 54; // r=54
-        const circumferenceValue = circumference.toFixed(1);
-        
         // SVG가 완전히 렌더링되도록 강제 리플로우
         void progressRing.offsetHeight;
         void progressCircle.offsetHeight;
         
-        // stroke-dasharray와 stroke-dashoffset 초기값 명시적 설정 (CSS와 일치)
-        progressCircle.style.strokeDasharray = circumferenceValue;
-        progressCircle.style.strokeDashoffset = circumferenceValue;
-        
         // SVG 전체 회전 애니메이션 강제 시작
         progressRing.style.animation = 'none';
         void progressRing.offsetHeight; // 강제 리플로우
-        progressRing.style.animation = 'rotate 2s linear infinite';
+        progressRing.style.animation = '';
         progressRing.style.animationPlayState = 'running';
         
         // 파란색 원의 stroke-dashoffset 애니메이션 강제 시작
-        // requestAnimationFrame을 사용하여 브라우저 렌더링 사이클과 동기화
+        // 모바일 브라우저 호환성: 인라인 스타일을 제거하여 CSS 애니메이션이 작동하도록
+        progressCircle.style.strokeDasharray = '';
+        progressCircle.style.strokeDashoffset = '';
+        
+        // 애니메이션 재시작 (CSS 애니메이션만 사용)
         requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                // 애니메이션 재시작
-                progressCircle.style.animation = 'none';
-                void progressCircle.offsetHeight; // 강제 리플로우
-                
-                // 애니메이션 재시작 (명시적으로 설정)
-                progressCircle.style.animation = 'progress-rotate 1.5s ease-in-out infinite';
-                progressCircle.style.animationDelay = '0s';
-                progressCircle.style.animationPlayState = 'running';
-                
-                // 초기값 재설정 (애니메이션 시작 전)
-                progressCircle.style.strokeDasharray = circumferenceValue;
-                progressCircle.style.strokeDashoffset = circumferenceValue;
-                
-                // 추가 강제 리플로우로 애니메이션 즉시 시작 보장
-                void progressCircle.offsetHeight;
-            });
+            // 애니메이션 재시작
+            progressCircle.style.animation = 'none';
+            void progressCircle.offsetHeight; // 강제 리플로우
+            
+            // CSS 애니메이션만 사용 (인라인 스타일 제거)
+            progressCircle.style.animation = '';
+            progressCircle.style.animationDelay = '';
+            progressCircle.style.animationPlayState = 'running';
+            
+            // 추가 강제 리플로우로 애니메이션 즉시 시작 보장
+            void progressCircle.offsetHeight;
         });
     }
 };
