@@ -362,7 +362,8 @@ body {
     margin-top: 15px;
     margin-bottom: 0;
     /* 하단 safe-area 적용 (버튼이 잘리지 않도록) */
-    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    padding-bottom: calc(30px + env(safe-area-inset-bottom));
+    margin-bottom: calc(10px + env(safe-area-inset-bottom));
 }
 
 .navigation .btn {
@@ -677,6 +678,7 @@ body {
 .work-prepare-box {
     max-width: 600px;
     margin: 0 auto;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
 }
 
 .date-display {
@@ -863,6 +865,7 @@ body {
 
 .btn-work-start {
     margin-top: 30px;
+    margin-bottom: calc(30px + env(safe-area-inset-bottom));
     font-size: 18px;
     font-weight: bold;
     height: 45px;
@@ -876,6 +879,7 @@ body {
 .btn-work-end-step1,
 .btn-work-end-step2 {
     margin-top: 30px;
+    margin-bottom: calc(30px + env(safe-area-inset-bottom));
     font-size: 18px;
     font-weight: bold;
     height: 45px;
@@ -1234,7 +1238,8 @@ body {
         margin-top: 10px;
         margin-bottom: 0;
         /* 하단 safe-area 적용 (dvh 영역에서 버튼이 잘리지 않도록) */
-        padding-bottom: calc(15px + env(safe-area-inset-bottom));
+        padding-bottom: calc(30px + env(safe-area-inset-bottom));
+        margin-bottom: calc(15px + env(safe-area-inset-bottom));
     }
     
     .login-container {
@@ -1299,6 +1304,9 @@ body {
         flex-direction: column;
         gap: 12px;
         margin-top: 15px;
+        /* 하단 safe-area 적용 (dvh 영역에서 버튼이 잘리지 않도록) */
+        padding-bottom: calc(30px + env(safe-area-inset-bottom));
+        margin-bottom: calc(15px + env(safe-area-inset-bottom));
     }
     
     .btn-work-prepare,
@@ -1388,7 +1396,11 @@ body {
     .work-prepare-container {
         padding: 15px;
         padding-top: 50px;
-        padding-bottom: calc(15px + env(safe-area-inset-bottom));
+        padding-bottom: calc(30px + env(safe-area-inset-bottom));
+    }
+    
+    .work-prepare-box {
+        padding-bottom: calc(30px + env(safe-area-inset-bottom));
     }
     
     .date-selector {
@@ -1635,8 +1647,8 @@ body {
     .container {
         /* 상단 safe-area 적용 (상태바와 겹침 방지) */
         padding-top: env(safe-area-inset-top);
-        /* 하단 safe-area 적용 (하단 잘림 방지) */
-        padding-bottom: env(safe-area-inset-bottom);
+        /* 하단 safe-area 적용 (하단 잘림 방지) - 버튼 영역 확보 */
+        padding-bottom: calc(20px + env(safe-area-inset-bottom));
         min-height: 100vh;
         min-height: 100dvh;
         min-height: -webkit-fill-available;
