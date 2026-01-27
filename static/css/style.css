@@ -1564,7 +1564,9 @@ body {
     }
     
     .container {
-        /* 하단 여백 제거 */
+        /* 상단 safe-area 적용 (상태바와 겹침 방지) */
+        padding-top: env(safe-area-inset-top);
+        /* 하단 safe-area 적용 (하단 잘림 방지) */
         padding-bottom: env(safe-area-inset-bottom);
         min-height: 100vh;
         min-height: 100dvh;
@@ -1612,3 +1614,36 @@ body {
     }
 }
 
+/* PWA Standalone 모드 - 브라우저 도구툴 영역(dvh) 제거 */
+@media (display-mode: standalone) {
+    html {
+        height: 100vh;
+    }
+    
+    body {
+        height: 100vh;
+    }
+    
+    .container {
+        min-height: 100vh;
+    }
+}
+
+/* PWA Standalone 모드 + 모바일 - 브라우저 도구툴 영역(dvh) 제거 */
+@media (display-mode: standalone) and (max-width: 768px) {
+    html {
+        height: 100vh;
+    }
+    
+    body {
+        height: 100vh;
+    }
+    
+    .container {
+        min-height: 100vh;
+    }
+    
+    .loading-overlay {
+        height: 100vh;
+    }
+}
