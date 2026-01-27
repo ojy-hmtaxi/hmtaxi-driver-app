@@ -3,7 +3,7 @@
   "short_name": "근무관리",
   "description": "한미산업운수 근무 관리 시스템",
   "start_url": "/",
-  "display": "standalone",
+  "display": "fullscreen",
   "background_color": "#ffffff",
   "theme_color": "#007bff",
   "orientation": "portrait",
