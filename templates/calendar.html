@@ -92,21 +92,33 @@
         </div>
 
         <div class="summary">
-            <div class="summary-item">
-                <span class="label">근무일수:</span>
-                <span class="value">{% if is_full_attendance %}만근{% else %}{{ work_days }}일{% endif %}</span>
+            <div class="summary-row">
+                <div class="summary-item">
+                    <span class="label">근무일수</span>
+                    <span class="value">{% if is_full_attendance %}만근{% else %}{{ work_days }}일{% endif %}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">결근일수</span>
+                    <span class="value">{{ absent_days }}일</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">휴무일수</span>
+                    <span class="value">{{ holiday_days_count }}일</span>
+                </div>
             </div>
-            <div class="summary-item">
-                <span class="label">결근일수:</span>
-                <span class="value">{{ absent_days }}일</span>
-            </div>
-            <div class="summary-item">
-                <span class="label">매출:</span>
-                <span class="value">{{ "{:,}".format(total_revenue) }}원</span>
-            </div>
-            <div class="summary-item">
-                <span class="label">연료비:</span>
-                <span class="value">{{ "{:,}".format(total_fuel_cost) }}원</span>
+            <div class="summary-row">
+                <div class="summary-item">
+                    <span class="label">매출</span>
+                    <span class="value">{{ "{:,}".format(total_revenue) }}원</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">연료비</span>
+                    <span class="value">{{ "{:,}".format(total_fuel_cost) }}원</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">가해사고</span>
+                    <span class="value">{{ accident_count }}건</span>
+                </div>
             </div>
         </div>
     </div>

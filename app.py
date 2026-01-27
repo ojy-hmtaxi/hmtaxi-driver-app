@@ -461,6 +461,38 @@ def calendar_view():
     full_attendance_threshold = total_days_in_month - holiday_days_count  # 만근 기준 (총 일수 - 휴무일)
     is_full_attendance = work_days >= full_attendance_threshold  # 만근 여부
     
+    # 가해사고 수 계산 (sales_DB_2026에서 해당 월의 데이터 확인)
+    accident_count = 0
+    try:
+        from utils.google_sheets import get_sales_worksheet
+        worksheet = get_sales_worksheet(month_name)
+        header = worksheet.row_values(1)
+        header = [str(h).strip() for h in header]
+        
+        # '사고유무' 컬럼 인덱스 찾기
+        if '사고유무' in header:
+            employee_id_col_idx = header.index('사번')
+            accident_col_idx = header.index('사고유무')
+            all_values = worksheet.get_all_values()
+            
+            # 데이터 행 처리 (헤더 제외)
+            for row in all_values[1:]:
+                if len(row) <= max(employee_id_col_idx, accident_col_idx):
+                    continue
+                
+                # 사번 확인
+                row_employee_id = str(row[employee_id_col_idx]).strip()
+                if row_employee_id != str(employee_id):
+                    continue
+                
+                # 사고유무 확인 (가해, 가해사고 등)
+                accident_status = str(row[accident_col_idx]).strip()
+                if accident_status and ('가해' in accident_status or '가해사고' in accident_status):
+                    accident_count += 1
+    except Exception as e:
+        print(f"Error calculating accident count: {e}")
+        accident_count = 0
+    
     # 디버깅: 실제 값 출력 (프로덕션에서는 주석 처리)
     # absent_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X')  # 결근일 개수 (디버깅용)
     # print(f"DEBUG - 만근 계산: 총일수={total_days_in_month}, 결근일={absent_days_count}, 휴무일={holiday_days_count}, 만근기준={full_attendance_threshold}, 근무일수={work_days}, 만근여부={is_full_attendance}")
@@ -482,6 +514,8 @@ def calendar_view():
                          absent_days=absent_days,
                          total_revenue=total_revenue,
                          total_fuel_cost=total_fuel_cost,
+                         holiday_days_count=holiday_days_count,
+                         accident_count=accident_count,
                          prev_year=prev_year,
                          prev_month=prev_month,
                          next_year=next_year,

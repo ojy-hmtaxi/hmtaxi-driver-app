@@ -587,14 +587,20 @@ body {
 
 
 .summary {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    display: flex;
+    flex-direction: column;
     gap: 15px;
     padding: 12px;
     background-color: #f5f6f8;
     border-radius: 4px;
     margin-top: 15px;
     margin-bottom: 0;
+}
+
+.summary-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
 }
 
 .summary-item {
@@ -1308,11 +1314,15 @@ body {
     }
     
     .summary {
-        grid-template-columns: repeat(2, 1fr);
         gap: 10px;
         padding: 10px;
         margin-top: 10px;
         margin-bottom: 0;
+    }
+    
+    .summary-row {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
     }
     
     .legend {
@@ -1415,9 +1425,13 @@ body {
     }
     
     .summary {
-        grid-template-columns: repeat(2, 1fr);
         gap: 10px;
         padding: 10px;
+    }
+    
+    .summary-row {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
     }
     
     .summary-item .label {
