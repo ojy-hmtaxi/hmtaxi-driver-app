@@ -1291,6 +1291,17 @@ body {
     
     .navigation {
         flex-direction: column;
+        gap: 12px;
+        margin-top: 15px;
+    }
+    
+    .btn-work-prepare,
+    .btn-work-end {
+        font-size: 18px;
+        font-weight: bold;
+        padding: 18px 20px;
+        border-radius: 8px;
+        width: 100%;
     }
     
     .calendar-table td {
@@ -1314,15 +1325,38 @@ body {
     }
     
     .summary {
-        gap: 10px;
-        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
         margin-top: 10px;
         margin-bottom: 0;
     }
     
     .summary-row {
+        display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
+        gap: 8px;
+    }
+    
+    .summary-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        text-align: center;
+    }
+    
+    .summary-item .label {
+        font-size: 13px;
+        color: #666;
+        font-weight: bold;
+    }
+    
+    .summary-item .value {
+        font-size: 16px;
+        font-weight: bold;
+        color: #007bff;
     }
     
     .legend {
@@ -1425,21 +1459,36 @@ body {
     }
     
     .summary {
-        gap: 10px;
-        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
     }
     
     .summary-row {
+        display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
+        gap: 8px;
+    }
+    
+    .summary-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        text-align: center;
     }
     
     .summary-item .label {
-        font-size: 14px;
+        font-size: 13px;
+        color: #666;
+        font-weight: bold;
     }
     
     .summary-item .value {
         font-size: 16px;
+        font-weight: bold;
+        color: #007bff;
     }
 }
 
