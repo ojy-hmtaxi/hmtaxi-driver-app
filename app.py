@@ -792,7 +792,7 @@ def work_end():
     
     # 기본값 설정
     default_work_type = work_type_from_sheet
-    # 근무종료 step1에서는 특기사항을 비워둠 (근무준비와 별개)
+    # 근무종료 step1에서는 보고사항을 비워둠 (근무준비와 별개)
     default_special_notes = ''
     
     return render_template('work_end_step1.html',
@@ -882,7 +882,7 @@ def work_end_step2():
             '통행료': toll_fee,
             '연료비': fuel_cost,
             '연료충전량': fuel_usage,
-            '특기사항': step1_data.get('special_notes', '')
+            '보고사항': step1_data.get('special_notes', '')
         }
         
         # 근무시간(분) 추가 (나중에 계산된 값으로 업데이트됨)

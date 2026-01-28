@@ -66,31 +66,31 @@
             </div>
             
             <div class="form-group">
-                <label>보고사항 (선택)</label>
+                <label>차량상태 (선택)</label>
                 <div class="vehicle-status-toggle">
-                    <input type="radio" id="vehicle_good" name="vehicle_condition" value="○ ○" checked>
+                    <input type="radio" id="vehicle_good" name="vehicle_condition" value="정상" checked>
                     <label for="vehicle_good" class="status-btn status-good status-active">
-                        <span class="status-icon">✓</span> ○ ○
+                        <span class="status-icon">✓</span> 정상
                     </label>
                     
-                    <input type="radio" id="vehicle_bad" name="vehicle_condition" value="△ △">
+                    <input type="radio" id="vehicle_bad" name="vehicle_condition" value="이상">
                     <label for="vehicle_bad" class="status-btn status-bad">
-                        <span class="status-icon">△</span> △ △
+                        <span class="status-icon">△</span> 이상
                     </label>
                     
-                    <input type="radio" id="vehicle_repair" name="vehicle_condition" value="□ □">
+                    <input type="radio" id="vehicle_repair" name="vehicle_condition" value="불량">
                     <label for="vehicle_repair" class="status-btn status-repair">
-                        <span class="status-icon">○</span> □ □
+                        <span class="status-icon">X</span> 불량
                     </label>
                 </div>
             </div>
             
             <div class="form-group">
-                <label for="special_notes">특기사항 (선택)</label>
+                <label for="special_notes">보고사항 (선택)</label>
                 <textarea id="special_notes" 
                           name="special_notes" 
                           rows="3" 
-                          placeholder="특기사항을 입력하세요"></textarea>
+                          placeholder="보고사항을 입력하세요"></textarea>
             </div>
 
             <div class="warning-message">

@@ -356,10 +356,10 @@ def format_work_details_note(work_details):
         note_lines.append(f"근무유형: {work_details.get('work_type')}")
     
     if work_details.get('vehicle_condition'):
-        note_lines.append(f"보고사항: {work_details.get('vehicle_condition')}")
+        note_lines.append(f"차량상태: {work_details.get('vehicle_condition')}")
     
     if work_details.get('special_notes'):
-        note_lines.append(f"특기사항: {work_details.get('special_notes')}")
+        note_lines.append(f"보고사항: {work_details.get('special_notes')}")
     
     return "\n".join(note_lines) if note_lines else ""
 
@@ -1083,7 +1083,8 @@ def get_today_replacement_display(employee_id, month_sheet_name, day):
         info = get_today_work_start_info(employee_id, month_sheet_name, day)
         if not info:
             return None
-        remark = (info.get('vehicle_condition') or '').strip()
+        # 대차 시 '보고사항' 줄에 기록되므로 special_notes에서 확인 (레거시는 vehicle_condition)
+        remark = (info.get('special_notes') or info.get('vehicle_condition') or '').strip()
         if '(대차)' not in remark:
             return None
         # "33바1810 (대차)" 형태에서 번호 추출

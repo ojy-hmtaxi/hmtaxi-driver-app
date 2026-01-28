@@ -12,7 +12,7 @@
                 <span class="driver-name">{{ session.get('name', '') }} 기사님 ({{ session.get('employee_id', '') }})
                     {% if today_vehicle %}
                     <div class="today-vehicle">
-                        서울{{ today_vehicle }}{% if today_vehicle_type %} ({{ today_vehicle_type }}){% endif %}{% if today_replacement_vehicle %} →{{ today_replacement_vehicle }}{% if today_replacement_vehicle_type %} ({{ today_replacement_vehicle_type }}){% endif %}{% endif %}
+                        {{ today_vehicle }}{% if today_vehicle_type %}({{ today_vehicle_type }}){% endif %}{% if today_replacement_vehicle %}→{{ today_replacement_vehicle }}{% if today_replacement_vehicle_type %}({{ today_replacement_vehicle_type }}){% endif %}{% endif %}
                     </div>
                     {% endif %}
                 </span>
