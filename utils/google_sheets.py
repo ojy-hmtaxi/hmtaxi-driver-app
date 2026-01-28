@@ -572,68 +572,46 @@ def get_today_work_start_info(employee_id, month_sheet_name, day):
         if date_col is None:
             return None
         
-        # 해당 사번의 행 찾기
+        from gspread.utils import rowcol_to_a1
+        vehicle_num_col = header.index('차량번호') + 1 if '차량번호' in header else None
+        vehicle_type_col = header.index('차종') + 1 if '차종' in header else None
+        first_info_with_note = None  # 운행시작일시 없는 경우 폴백
+        
+        # 해당 사번의 행 찾기 (운행시작일시가 있는 행 = 해당일 실제 근무 시작 행을 우선)
         for i, row in enumerate(all_values[1:], start=2):
-            if len(row) >= employee_id_col:
-                if str(row[employee_id_col - 1]).strip() == str(employee_id).strip():
-                    # 셀의 메모 가져오기
-                    from gspread.utils import rowcol_to_a1
-                    cell_address = rowcol_to_a1(i, date_col)
-                    
-                    try:
-                        # gspread의 get_note 메서드 사용
-                        if hasattr(worksheet, 'get_note'):
-                            note_text = worksheet.get_note(cell_address)
-                        else:
-                            # API를 통해 메모 가져오기
-                            note_text = get_note_via_api(worksheet, i, date_col)
-                        
-                        if note_text:
-                            # 메모에서 정보 파싱
-                            info = {}
-                            for line in note_text.split('\n'):
-                                if ':' in line:
-                                    key, value = line.split(':', 1)
-                                    key = key.strip()
-                                    value = value.strip()
-                                    if key == '운행차량':
-                                        info['vehicle_number'] = value
-                                    elif key == '운행시작일시':
-                                        info['work_date'] = value
-                                    elif key == '근무유형':
-                                        info['work_type'] = value
-                                    elif key == '보고사항':
-                                        info['vehicle_condition'] = value
-                                    elif key == '특기사항':
-                                        info['special_notes'] = value
-                            
-                            # 차량번호와 차종도 행에서 가져오기
-                            vehicle_num_col = header.index('차량번호') + 1 if '차량번호' in header else None
-                            vehicle_type_col = header.index('차종') + 1 if '차종' in header else None
-                            
-                            if vehicle_num_col and len(row) >= vehicle_num_col:
-                                info['vehicle_number'] = row[vehicle_num_col - 1].strip()
-                            if vehicle_type_col and len(row) >= vehicle_type_col:
-                                info['vehicle_type'] = row[vehicle_type_col - 1].strip()
-                            
-                            return info
-                    except Exception as e:
-                        print(f"Warning: Could not get note: {e}")
-                        # 메모가 없어도 행에서 기본 정보 가져오기
-                        info = {}
-                        vehicle_num_col = header.index('차량번호') + 1 if '차량번호' in header else None
-                        vehicle_type_col = header.index('차종') + 1 if '차종' in header else None
-                        work_type_col = header.index('근무유형') + 1 if '근무유형' in header else None
-                        
-                        if vehicle_num_col and len(row) >= vehicle_num_col:
-                            info['vehicle_number'] = row[vehicle_num_col - 1].strip()
-                        if vehicle_type_col and len(row) >= vehicle_type_col:
-                            info['vehicle_type'] = row[vehicle_type_col - 1].strip()
-                        if work_type_col and len(row) >= work_type_col:
-                            info['work_type'] = row[work_type_col - 1].strip()
-                        
-                        return info if info else None
-        return None
+            if len(row) < employee_id_col or str(row[employee_id_col - 1]).strip() != str(employee_id).strip():
+                continue
+            cell_address = rowcol_to_a1(i, date_col)
+            try:
+                note_text = worksheet.get_note(cell_address) if hasattr(worksheet, 'get_note') else get_note_via_api(worksheet, i, date_col)
+            except Exception:
+                note_text = None
+            if not note_text:
+                continue
+            info = {}
+            for line in note_text.split('\n'):
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key, value = key.strip(), value.strip()
+                    if key == '운행차량':
+                        info['vehicle_number'] = value
+                    elif key == '운행시작일시':
+                        info['work_date'] = value
+                    elif key == '근무유형':
+                        info['work_type'] = value
+                    elif key == '차량상태':
+                        info['vehicle_condition'] = value
+                    elif key == '보고사항':
+                        info['special_notes'] = value
+            if vehicle_num_col and len(row) >= vehicle_num_col:
+                info['vehicle_number'] = row[vehicle_num_col - 1].strip()
+            if vehicle_type_col and len(row) >= vehicle_type_col:
+                info['vehicle_type'] = row[vehicle_type_col - 1].strip()
+            if first_info_with_note is None:
+                first_info_with_note = info
+            if info.get('work_date'):
+                return info
+        return first_info_with_note
     except Exception as e:
         print(f"Error getting today work start info: {e}")
         import traceback
