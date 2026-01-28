@@ -361,19 +361,27 @@ document.addEventListener('DOMContentLoaded', function() {
     // 폼 제출 이벤트를 즉시 등록 (DOMContentLoaded 전에도 작동)
     document.addEventListener('submit', function(e) {
         const form = e.target;
-        if (form.tagName === 'FORM') {
-            const submitButton = form.querySelector('button[type="submit"]');
-            if (submitButton && !submitButton.disabled) {
-                submitButton.disabled = true;
-                submitButton.textContent = '처리 중...';
-            }
-            
-            // 로그아웃 폼은 제외
-            const formAction = form.getAttribute('action') || form.action || '';
-            if (!formAction.includes('/logout')) {
-                LoadingManager.show();
-            }
+        if (form.tagName !== 'FORM') return;
+        
+        const formAction = form.getAttribute('action') || form.action || '';
+        if (formAction.includes('/logout')) return;
+        
+        e.preventDefault();
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton && !submitButton.disabled) {
+            submitButton.disabled = true;
+            submitButton.textContent = '처리 중...';
         }
+        if (!LoadingManager.overlay || !LoadingManager.container) {
+            LoadingManager.init();
+        }
+        LoadingManager.show();
+        // 스피너가 화면에 그려진 다음 제출 (한 프레임 대기)
+        requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+                form.submit();
+            });
+        });
     }, true); // capture phase에서 실행하여 더 빠르게 처리
     
     // 링크 클릭 이벤트를 즉시 등록 (DOMContentLoaded 전에도 작동)

@@ -789,6 +789,10 @@ body {
     color: #28a745;
 }
 
+.replacement-apply-form .vehicle-list-table .return-time-strict {
+    color: #dc3545;
+}
+
 .replacement-apply-form .btn-submit {
     width: 100%;
     padding: 15px 20px;
