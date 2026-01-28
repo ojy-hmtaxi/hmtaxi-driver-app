@@ -24,6 +24,9 @@ const LoadingManager = {
      * 로딩 오버레이 표시
      */
     show() {
+        if (!this.overlay || !this.container) {
+            this.init();
+        }
         if (this.isActive || !this.overlay) return;
         
         this.isActive = true;
@@ -390,16 +393,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // href가 없거나 javascript:, #로 시작하는 경우 제외
-        if (!link.href || link.href.startsWith('javascript:') || link.href === '#') {
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('javascript:') || href === '#') {
             return;
         }
         
-        // 같은 도메인 내 링크만
+        // 같은 도메인 내 링크만 - 스피너 표시 후 이동
         try {
             const linkUrl = new URL(link.href, window.location.origin);
             const currentUrl = new URL(window.location.href);
-            if (linkUrl.origin === currentUrl.origin) {
+            if (linkUrl.origin === currentUrl.origin && linkUrl.pathname !== currentUrl.pathname) {
+                e.preventDefault();
+                if (!LoadingManager.overlay || !LoadingManager.container) {
+                    LoadingManager.init();
+                }
                 LoadingManager.show();
+                // 스피너가 화면에 그려진 다음 이동 (한 프레임 대기)
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        window.location.href = link.href;
+                    });
+                });
             }
         } catch (err) {
             // URL 파싱 오류 시 무시

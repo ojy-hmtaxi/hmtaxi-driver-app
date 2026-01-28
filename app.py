@@ -80,7 +80,11 @@ from utils.google_sheets import (
     add_sales_record,
     get_today_work_start_info,
     get_user_sales_summary,
-    has_sales_record_for_date
+    has_sales_record_for_date,
+    get_loaner_vehicles,
+    update_loaner_vehicle_on_apply,
+    update_work_cell_note_report,
+    get_today_replacement_display
 )
 import pandas as pd
 
@@ -502,6 +506,15 @@ def calendar_view():
     # 공지사항 읽지 않은 개수 확인 (아직 구현 전이므로 임시로 False)
     has_unread_notices = False  # TODO: 공지사항 기능 구현 시 실제 값으로 변경
     
+    # 근무 중일 때 대차신청 버튼 표시 및 대차 후 차량 표시
+    show_replacement_button = not can_start_work  # 근무 중이면 대차신청 버튼
+    today_replacement_vehicle = None
+    today_replacement_vehicle_type = None
+    if year == current_date.year and month == current_date.month and not can_start_work:
+        rep = get_today_replacement_display(employee_id, month_name, current_date.day)
+        if rep:
+            today_replacement_vehicle, today_replacement_vehicle_type = rep
+    
     return render_template('calendar.html', 
                          calendar=cal,
                          year=year,
@@ -524,8 +537,46 @@ def calendar_view():
                          can_start_work=can_start_work,
                          today_vehicle=today_vehicle,
                          today_vehicle_type=today_vehicle_type,
+                         today_replacement_vehicle=today_replacement_vehicle,
+                         today_replacement_vehicle_type=today_replacement_vehicle_type,
+                         show_replacement_button=show_replacement_button,
                          is_full_attendance=is_full_attendance,
                          has_unread_notices=has_unread_notices)
+
+
+@app.route('/vehicle-replacement-apply', methods=['GET', 'POST'])
+@require_login
+def vehicle_replacement_apply():
+    """대차신청 - 근무 중 차량 교체 신청"""
+    employee_id = session.get('employee_id')
+    driver_name = session.get('name', '') or ''
+    current_date = get_kst_now()
+    month_name = config.MONTHS[current_date.month - 1]
+    today_day = current_date.day
+    
+    if request.method == 'POST':
+        vehicle_number = (request.form.get('vehicle_number') or '').strip()
+        if not vehicle_number:
+            flash('대차할 차량을 선택해주세요.', 'error')
+            return redirect(url_for('vehicle_replacement_apply'))
+        apply_date_str = current_date.strftime('%Y/%m/%d')
+        if update_loaner_vehicle_on_apply(vehicle_number, employee_id, driver_name, apply_date_str):
+            report_value = f"{vehicle_number} (대차)"
+            if update_work_cell_note_report(employee_id, month_name, today_day, report_value):
+                work_data_cache.clear_pattern(f"work_data:{employee_id}:*")
+                flash('대차신청이 완료되었습니다.', 'success')
+            else:
+                flash('보고사항 반영에 실패했습니다. 관리자에게 문의하세요.', 'error')
+        else:
+            flash('대차 신청 처리에 실패했습니다. 다시 시도해주세요.', 'error')
+        return redirect(url_for('calendar_view', year=current_date.year, month=current_date.month))
+    
+    vehicles = get_loaner_vehicles()
+    return render_template('vehicle_replacement_apply.html',
+                          vehicles=vehicles,
+                          year=current_date.year,
+                          month=current_date.month)
+
 
 @app.route('/work-start', methods=['GET', 'POST'])
 @require_login

@@ -922,3 +922,151 @@ def has_sales_record_for_date(employee_id, month_sheet_name, operation_date):
     except Exception as e:
         print(f"Error checking sales record for date: {e}")
         return False
+
+
+# ----- 대차신청 (차량 교체) -----
+LOANER_SHEET_NAME = "대차차량"
+
+
+def get_loaner_vehicles():
+    """[대차차량] 시트에서 대차가능('O')인 차량 목록 반환"""
+    try:
+        worksheet = get_worksheet(LOANER_SHEET_NAME)
+        all_values = worksheet.get_all_values()
+        if not all_values or len(all_values) < 2:
+            return []
+        header = [str(h).strip() for h in all_values[0]]
+        col_idx = {h: i for i, h in enumerate(header)}
+        need = ['차량번호', '차종', '대차가능', '복귀시간(엄수)']
+        if not all(k in col_idx for k in need):
+            return []
+        out = []
+        for row in all_values[1:]:
+            if len(row) <= max(col_idx.values()):
+                continue
+            가능 = str(row[col_idx['대차가능']]).strip().upper()
+            if 가능 != 'O':
+                continue
+            out.append({
+                '차량번호': str(row[col_idx['차량번호']]).strip(),
+                '차종': str(row[col_idx['차종']]).strip(),
+                '복귀시간(엄수)': str(row[col_idx['복귀시간(엄수)']]).strip() if '복귀시간(엄수)' in col_idx else ''
+            })
+        return out
+    except Exception as e:
+        print(f"Error get_loaner_vehicles: {e}")
+        return []
+
+
+def update_loaner_vehicle_on_apply(vehicle_number, employee_id, driver_name, apply_date_str):
+    """대차 신청 시 [대차차량] 시트 해당 행 수정: 대차가능=X, 대차신청일, 대차사용자"""
+    try:
+        worksheet = get_worksheet(LOANER_SHEET_NAME)
+        all_values = worksheet.get_all_values()
+        if not all_values or len(all_values) < 2:
+            return False
+        header = [str(h).strip() for h in all_values[0]]
+        col_idx = {h: i for i, h in enumerate(header)}
+        num_col = col_idx.get('차량번호')
+        if num_col is None:
+            return False
+        vn = str(vehicle_number).strip()
+        for i, row in enumerate(all_values[1:], start=2):
+            if len(row) <= num_col:
+                continue
+            if str(row[num_col]).strip() == vn:
+                if '대차가능' in col_idx:
+                    worksheet.update_cell(i, col_idx['대차가능'] + 1, 'X')
+                if '대차신청일' in col_idx:
+                    worksheet.update_cell(i, col_idx['대차신청일'] + 1, apply_date_str)
+                if '대차사용자' in col_idx:
+                    worksheet.update_cell(i, col_idx['대차사용자'] + 1, driver_name or '')
+                return True
+        return False
+    except Exception as e:
+        print(f"Error update_loaner_vehicle_on_apply: {e}")
+        return False
+
+
+def update_work_cell_note_report(employee_id, month_sheet_name, day, report_value):
+    """해당 월·일의 근무 셀 메모에서 '보고사항'만 갱신 (없으면 추가)"""
+    try:
+        worksheet = get_worksheet(month_sheet_name)
+        all_values = worksheet.get_all_values()
+        if not all_values:
+            return False
+        header = [str(h).strip() for h in all_values[0]]
+        try:
+            emp_col = header.index('사번') + 1
+        except ValueError:
+            return False
+        date_str = str(day).strip()
+        try:
+            date_col = header.index(date_str) + 1
+        except ValueError:
+            return False
+        from gspread.utils import rowcol_to_a1
+        for i, row in enumerate(all_values[1:], start=2):
+            if len(row) < emp_col:
+                continue
+            if str(row[emp_col - 1]).strip() != str(employee_id).strip():
+                continue
+            cell_address = rowcol_to_a1(i, date_col)
+            try:
+                note_text = worksheet.get_note(cell_address) if hasattr(worksheet, 'get_note') else None
+            except Exception:
+                note_text = get_note_via_api(worksheet, i, date_col)
+            note_text = note_text or ''
+            lines = [ln.strip() for ln in note_text.split('\n') if ln.strip()]
+            new_lines = []
+            found = False
+            for ln in lines:
+                if ln.startswith('보고사항:'):
+                    new_lines.append(f"보고사항: {report_value}")
+                    found = True
+                else:
+                    new_lines.append(ln)
+            if not found:
+                new_lines.append(f"보고사항: {report_value}")
+            new_note = '\n'.join(new_lines)
+            if hasattr(worksheet, 'insert_note'):
+                worksheet.insert_note(cell_address, new_note)
+            else:
+                add_note_via_api(worksheet, i, date_col, new_note)
+            return True
+    except Exception as e:
+        print(f"Error update_work_cell_note_report: {e}")
+        return False
+
+
+def get_today_replacement_display(employee_id, month_sheet_name, day):
+    """오늘(해당일) 근무 셀 메모의 보고사항에서 대차 차량이 있으면 (차량번호, 차종) 반환"""
+    try:
+        info = get_today_work_start_info(employee_id, month_sheet_name, day)
+        if not info:
+            return None
+        remark = (info.get('vehicle_condition') or '').strip()
+        if '(대차)' not in remark:
+            return None
+        # "33바1810 (대차)" 형태에서 번호 추출
+        num = remark.replace('(대차)', '').strip()
+        if not num:
+            return None
+        ws = get_worksheet(LOANER_SHEET_NAME)
+        all_values = ws.get_all_values()
+        if not all_values or len(all_values) < 2:
+            return (num, '')
+        header = [str(h).strip() for h in all_values[0]]
+        nc = header.index('차량번호') if '차량번호' in header else -1
+        tc = header.index('차종') if '차종' in header else -1
+        if nc < 0:
+            return (num, '')
+        for row in all_values[1:]:
+            if len(row) <= max(nc, tc):
+                continue
+            if str(row[nc]).strip() == num:
+                return (num, str(row[tc]).strip() if tc >= 0 and len(row) > tc else '')
+        return (num, '')
+    except Exception as e:
+        print(f"Error get_today_replacement_display: {e}")
+        return None

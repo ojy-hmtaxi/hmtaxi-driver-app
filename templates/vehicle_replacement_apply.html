@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}대차신청 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="replacement-apply-container">
+    <div class="replacement-apply-header">
+        <a href="{{ url_for('calendar_view', year=year, month=month) }}" class="back-button">‹</a>
+        <h1>대차신청</h1>
+    </div>
+
+    <div class="replacement-apply-box">
+        <p class="replacement-apply-desc">대차 가능한 차량 리스트에서 선택 후 [대차신청] 버튼을 눌러 완료해 주세요.</p>
+        <form method="POST" action="{{ url_for('vehicle_replacement_apply') }}" class="replacement-apply-form" id="replacementApplyForm">
+            {% if vehicles %}
+            <div class="vehicle-list-table-wrap">
+                <table class="vehicle-list-table">
+                    <thead>
+                        <tr>
+                            <th>차량번호</th>
+                            <th>차종</th>
+                            <th>복귀시간(엄수)</th>
+                            <th>선택</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in vehicles %}
+                        <tr>
+                            <td>{{ v['차량번호'] }}</td>
+                            <td>{{ v['차종'] }}</td>
+                            <td>{{ v['복귀시간(엄수)'] or '-' }}</td>
+                            <td>
+                                <input type="radio" name="vehicle_number" value="{{ v['차량번호'] }}" id="vehicle_{{ loop.index }}" required>
+                                <label for="vehicle_{{ loop.index }}" class="radio-label"><i class="bi bi-check-circle-fill"></i></label>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="btn btn-replacement-apply btn-submit">대차신청</button>
+            {% else %}
+            <div class="replacement-apply-empty">
+                현재 대차 가능한 차량이 없습니다.
+            </div>
+            <a href="{{ url_for('calendar_view', year=year, month=month) }}" class="btn btn-secondary btn-back-only">캘린더로 돌아가기</a>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endblock %}

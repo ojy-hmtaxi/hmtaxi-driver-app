@@ -12,7 +12,7 @@
                 <span class="driver-name">{{ session.get('name', '') }} 기사님 ({{ session.get('employee_id', '') }})
                     {% if today_vehicle %}
                     <div class="today-vehicle">
-                        서울{{ today_vehicle }}{% if today_vehicle_type %} - {{ today_vehicle_type }}{% endif %}
+                        서울{{ today_vehicle }}{% if today_vehicle_type %} ({{ today_vehicle_type }}){% endif %}{% if today_replacement_vehicle %} →{{ today_replacement_vehicle }}{% if today_replacement_vehicle_type %} ({{ today_replacement_vehicle_type }}){% endif %}{% endif %}
                     </div>
                     {% endif %}
                 </span>
@@ -21,7 +21,7 @@
         <div class="header-right">
             <div class="user-actions">
                 <a href="#" class="btn btn-primary btn-sm btn-notice btn-disabled" id="noticeBtn" aria-disabled="true">
-                    공지사항
+                    공지사항(준비중)
                     {% if has_unread_notices %}
                     <span class="notice-badge">N</span>
                     {% endif %}
@@ -124,9 +124,13 @@
     </div>
     
     <div class="navigation">
+        {% if show_replacement_button %}
+        <a href="{{ url_for('vehicle_replacement_apply') }}" class="btn btn-replacement-apply btn-work-prepare">대차신청</a>
+        {% else %}
         <a href="{{ url_for('work_start') if can_start_work else '#' }}"
            class="btn btn-primary btn-work-prepare {% if not can_start_work %}btn-disabled{% endif %}"
            {% if not can_start_work %}aria-disabled="true"{% endif %}>근무준비</a>
+        {% endif %}
         <a href="{{ url_for('work_end') }}" class="btn btn-danger btn-work-end {% if not can_end_work %}btn-disabled{% endif %}" {% if not can_end_work %}aria-disabled="true"{% endif %}>근무종료</a>
     </div>
 </div>
