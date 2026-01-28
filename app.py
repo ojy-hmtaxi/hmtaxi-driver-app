@@ -141,6 +141,17 @@ def get_user_sales_summary_cached(employee_id, month_sheet_name):
         sales_data_cache.set(cache_key, data)
     return data
 
+def has_sales_record_for_date_cached(employee_id, month_sheet_name, operation_date):
+    """캐시를 사용하는 has_sales_record_for_date 래퍼 (캘린더 로딩 시 반복 호출 감소)"""
+    date_norm = str(operation_date).replace('-', '/')
+    cache_key = f"has_sales:{employee_id}:{month_sheet_name}:{date_norm}"
+    cached = sales_data_cache.get(cache_key)
+    if cached is not None:
+        return bool(cached)
+    result = has_sales_record_for_date(employee_id, month_sheet_name, operation_date)
+    sales_data_cache.set(cache_key, result)
+    return result
+
 def get_work_start_info_with_fallback(employee_id, reference_date):
     """현재 날짜 기준으로 운행시작 정보를 찾고, 없으면 하루 전 정보를 반환"""
     month_name = config.MONTHS[reference_date.month - 1]
@@ -335,7 +346,7 @@ def calendar_view():
         if work_status.get(today_day) == 'O':
             # 오늘 날짜에 O가 있으면 sales_DB_2026에 기록이 있는지 확인
             operation_date = current_date.strftime('%Y/%m/%d')
-            if not has_sales_record_for_date(employee_id, month_name, operation_date):
+            if not has_sales_record_for_date_cached(employee_id, month_name, operation_date):
                 can_end_work = True
         
         # 어제 날짜 확인
@@ -367,7 +378,7 @@ def calendar_view():
                 # 운행일은 어제 날짜(근무예정일)를 사용
                 operation_date = yesterday_date.strftime('%Y/%m/%d')
                 # sales_DB_2026에 해당 날짜의 기록이 없는 경우에만 활성화
-                if not has_sales_record_for_date(employee_id, yesterday_month_name, operation_date):
+                if not has_sales_record_for_date_cached(employee_id, yesterday_month_name, operation_date):
                     can_end_work = True
         
         # 근무시작 버튼 활성화 조건:
@@ -377,7 +388,7 @@ def calendar_view():
         if work_status.get(today_day) == 'O':
             # 오늘 날짜에 O가 있으면 sales_DB_2026에 기록이 있는지 확인
             operation_date = current_date.strftime('%Y/%m/%d')
-            if has_sales_record_for_date(employee_id, month_name, operation_date):
+            if has_sales_record_for_date_cached(employee_id, month_name, operation_date):
                 # sales_DB_2026에 기록이 있으면 오늘 근무가 종료된 것이므로 근무시작 버튼 활성화
                 can_start_work = True
             else:
@@ -417,7 +428,7 @@ def calendar_view():
                 # 어제 날짜에 Google Sheets에 'O'가 기록된 날짜가 운행일이므로
                 operation_date = yesterday_date.strftime('%Y/%m/%d')
                 # sales_DB_2026에 해당 날짜의 기록이 있는지 확인
-                if not has_sales_record_for_date(employee_id, yesterday_month_name, operation_date):
+                if not has_sales_record_for_date_cached(employee_id, yesterday_month_name, operation_date):
                     can_start_work = False
         
         # 오늘 날짜에 배정된 차량번호와 차종 찾기 (근무 준비 완료 여부와 무관하게)
@@ -453,10 +464,11 @@ def calendar_view():
     
     current_date_only = current_date.date()
     
-    # 이달의 매출 합계 가져오기 (캐시 사용)
-    sales_summary = get_user_sales_summary_cached(employee_id, month_name)
+    # 이달의 매출 합계·가해사고 수 가져오기 (캐시 사용, sales 시트 한 번만 사용)
+    sales_summary = get_user_sales_summary_cached(employee_id, month_name) or {}
     total_revenue = sales_summary.get('total_revenue', 0)
     total_fuel_cost = sales_summary.get('total_fuel_cost', 0)
+    accident_count = sales_summary.get('accident_count', 0)
     
     # 만근 기준 계산: 그 달의 총 일수 - 휴무일 (결근일은 제외하지 않음)
     total_days_in_month = calendar.monthrange(year, month)[1]  # 그 달의 총 일수
@@ -464,38 +476,6 @@ def calendar_view():
     holiday_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == '/')  # 휴무일 개수
     full_attendance_threshold = total_days_in_month - holiday_days_count  # 만근 기준 (총 일수 - 휴무일)
     is_full_attendance = work_days >= full_attendance_threshold  # 만근 여부
-    
-    # 가해사고 수 계산 (sales_DB_2026에서 해당 월의 데이터 확인)
-    accident_count = 0
-    try:
-        from utils.google_sheets import get_sales_worksheet
-        worksheet = get_sales_worksheet(month_name)
-        header = worksheet.row_values(1)
-        header = [str(h).strip() for h in header]
-        
-        # '사고유무' 컬럼 인덱스 찾기
-        if '사고유무' in header:
-            employee_id_col_idx = header.index('사번')
-            accident_col_idx = header.index('사고유무')
-            all_values = worksheet.get_all_values()
-            
-            # 데이터 행 처리 (헤더 제외)
-            for row in all_values[1:]:
-                if len(row) <= max(employee_id_col_idx, accident_col_idx):
-                    continue
-                
-                # 사번 확인
-                row_employee_id = str(row[employee_id_col_idx]).strip()
-                if row_employee_id != str(employee_id):
-                    continue
-                
-                # 사고유무 확인 (가해, 가해사고 등)
-                accident_status = str(row[accident_col_idx]).strip()
-                if accident_status and ('가해' in accident_status or '가해사고' in accident_status):
-                    accident_count += 1
-    except Exception as e:
-        print(f"Error calculating accident count: {e}")
-        accident_count = 0
     
     # 디버깅: 실제 값 출력 (프로덕션에서는 주석 처리)
     # absent_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X')  # 결근일 개수 (디버깅용)

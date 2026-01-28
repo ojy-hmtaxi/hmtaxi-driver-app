@@ -2,6 +2,10 @@
 
 {% block title %}근무종료 - 근무 관리 시스템{% endblock %}
 
+{% block extra_head %}
+<link rel="prefetch" href="{{ url_for('calendar_view') }}">
+{% endblock %}
+
 {% block content %}
 <div class="work-prepare-container">
     <div class="work-prepare-header">

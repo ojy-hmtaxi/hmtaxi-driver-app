@@ -791,7 +791,8 @@ def get_user_sales_summary(employee_id, month_sheet_name):
     Returns:
         dict: {
             'total_revenue': 총 매출 (현금운임 + 카드운임),
-            'total_fuel_cost': 총 연료비
+            'total_fuel_cost': 총 연료비,
+            'accident_count': 가해사고 건수
         }
     """
     try:
@@ -805,7 +806,7 @@ def get_user_sales_summary(employee_id, month_sheet_name):
         all_values = worksheet.get_all_values()
         
         if len(all_values) < 2:  # 헤더만 있거나 데이터가 없음
-            return {'total_revenue': 0, 'total_fuel_cost': 0}
+            return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0}
         
         # 컬럼 인덱스 찾기
         try:
@@ -815,14 +816,20 @@ def get_user_sales_summary(employee_id, month_sheet_name):
             fuel_cost_col_idx = header.index('연료비')
         except ValueError as e:
             print(f"Error: Required column not found in sales sheet: {e}")
-            return {'total_revenue': 0, 'total_fuel_cost': 0}
+            return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0}
+        
+        accident_col_idx = header.index('사고유무') if '사고유무' in header else None
         
         total_revenue = 0
         total_fuel_cost = 0
+        accident_count = 0
         
         # 데이터 행 처리 (헤더 제외, 인덱스 1부터)
         for row_idx, row in enumerate(all_values[1:], start=2):
-            if len(row) <= max(employee_id_col_idx, cash_fare_col_idx, card_fare_col_idx, fuel_cost_col_idx):
+            max_col = max(employee_id_col_idx, cash_fare_col_idx, card_fare_col_idx, fuel_cost_col_idx)
+            if accident_col_idx is not None:
+                max_col = max(max_col, accident_col_idx)
+            if len(row) <= max_col:
                 continue
             
             # 사번 확인
@@ -853,16 +860,23 @@ def get_user_sales_summary(employee_id, month_sheet_name):
                 total_fuel_cost += fuel_cost
             except (ValueError, TypeError):
                 pass
+            
+            # 가해사고 건수 (같은 시트 한 번 읽기로 함께 계산)
+            if accident_col_idx is not None:
+                accident_status = str(row[accident_col_idx]).strip()
+                if accident_status and ('가해' in accident_status or '가해사고' in accident_status):
+                    accident_count += 1
         
         return {
             'total_revenue': total_revenue,
-            'total_fuel_cost': total_fuel_cost
+            'total_fuel_cost': total_fuel_cost,
+            'accident_count': accident_count
         }
     except Exception as e:
         print(f"Error getting user sales summary: {e}")
         import traceback
         traceback.print_exc()
-        return {'total_revenue': 0, 'total_fuel_cost': 0}
+        return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0}
 
 def has_sales_record_for_date(employee_id, month_sheet_name, operation_date):
     """sales_DB_2026에서 특정 날짜에 해당 사번의 매출 기록이 있는지 확인

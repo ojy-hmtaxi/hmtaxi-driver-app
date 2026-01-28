@@ -2,6 +2,10 @@
 
 {% block title %}근무이력 - 근무 관리 시스템{% endblock %}
 
+{% block extra_head %}
+<link rel="prefetch" href="{{ url_for('calendar_view') }}">
+{% endblock %}
+
 {% block content %}
 <div class="work-history-container">
     <div class="header">
