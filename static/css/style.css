@@ -998,8 +998,12 @@ body {
 .vehicle-condition-group .status-btn.status-good {
     border-color: #28a745;
 }
-.vehicle-condition-group .status-btn.status-good.status-active,
 .vehicle-condition-group .status-btn.status-good:hover {
+    border-color: #28a745;
+    background-color: #d4edda;
+    color: #155724;
+}
+.vehicle-condition-group .status-btn.status-good.status-active {
     background-color: #d4edda;
     color: #155724;
     border-color: #28a745;
@@ -1007,8 +1011,12 @@ body {
 .vehicle-condition-group .status-btn.status-bad {
     border-color: #ffc107;
 }
-.vehicle-condition-group .status-btn.status-bad.status-active,
 .vehicle-condition-group .status-btn.status-bad:hover {
+    border-color: #ffc107;
+    background-color: #fff3cd;
+    color: #856404;
+}
+.vehicle-condition-group .status-btn.status-bad.status-active {
     background-color: #fff3cd;
     color: #856404;
     border-color: #ffc107;
@@ -1016,8 +1024,12 @@ body {
 .vehicle-condition-group .status-btn.status-repair {
     border-color: #dc3545;
 }
-.vehicle-condition-group .status-btn.status-repair.status-active,
 .vehicle-condition-group .status-btn.status-repair:hover {
+    border-color: #dc3545;
+    background-color: #f8d7da;
+    color: #721c24;
+}
+.vehicle-condition-group .status-btn.status-repair.status-active {
     background-color: #f8d7da;
     color: #721c24;
     border-color: #dc3545;
