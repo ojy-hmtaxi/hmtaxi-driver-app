@@ -2,6 +2,10 @@
 
 {% block title %}근무응원 - 근무 관리 시스템{% endblock %}
 
+{% block extra_head %}
+<link rel="prefetch" href="{{ url_for('calendar_view') }}">
+{% endblock %}
+
 {% block content %}
 <div class="work-thanks-container">
     <div class="thanks-content">
@@ -22,7 +26,7 @@
         </div>
         
         <div class="auto-redirect">
-            <span id="countdown">4</span>초 후, 메인화면으로 돌아갑니다.
+            <span id="countdown">2</span>초 후, 메인화면으로 돌아갑니다.
         </div>
     </div>
 </div>
@@ -30,22 +34,19 @@
 
 {% block extra_scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    let countdown = 4;
-    const countdownElement = document.getElementById('countdown');
-    
-    const timer = setInterval(function() {
+(function() {
+    var url = "{{ url_for('calendar_view', year=year, month=month) }}";
+    var countdown = 2;
+    var el = document.getElementById('countdown');
+    var timer = setInterval(function() {
         countdown--;
-        if (countdownElement) {
-            countdownElement.textContent = countdown;
-        }
-        
+        if (el) el.textContent = countdown;
         if (countdown <= 0) {
             clearInterval(timer);
-            window.location.href = "{{ url_for('calendar_view') }}";
+            window.location.replace(url);
         }
     }, 1000);
-});
+})();
 </script>
 {% endblock %}
 

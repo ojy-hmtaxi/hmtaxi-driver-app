@@ -712,7 +712,8 @@ def work_start():
 @require_login
 def work_thanks():
     """근무응원 페이지"""
-    return render_template('work_thanks.html')
+    now = get_kst_now()
+    return render_template('work_thanks.html', year=now.year, month=now.month)
 
 @app.route('/work-end', methods=['GET', 'POST'])
 @require_login
@@ -990,7 +991,8 @@ def work_end_step2():
 @require_login
 def work_end_thanks():
     """근무종료 감사 페이지"""
-    return render_template('work_end_thanks.html')
+    now = get_kst_now()
+    return render_template('work_end_thanks.html', year=now.year, month=now.month)
 
 @app.route('/work-history')
 @require_login

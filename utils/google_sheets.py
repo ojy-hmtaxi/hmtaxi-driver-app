@@ -959,7 +959,7 @@ def get_loaner_vehicles():
 
 
 def update_loaner_vehicle_on_apply(vehicle_number, employee_id, driver_name, apply_date_str):
-    """대차 신청 시 [대차차량] 시트 해당 행 수정: 대차가능=X, 대차신청일, 대차사용자"""
+    """대차 신청 시 [대차차량] 시트 해당 행 수정: 대차가능=X, 대차신청일, 대차사용자, 사번"""
     try:
         worksheet = get_worksheet(LOANER_SHEET_NAME)
         all_values = worksheet.get_all_values()
@@ -981,6 +981,8 @@ def update_loaner_vehicle_on_apply(vehicle_number, employee_id, driver_name, app
                     worksheet.update_cell(i, col_idx['대차신청일'] + 1, apply_date_str)
                 if '대차사용자' in col_idx:
                     worksheet.update_cell(i, col_idx['대차사용자'] + 1, driver_name or '')
+                if '사번' in col_idx:
+                    worksheet.update_cell(i, col_idx['사번'] + 1, str(employee_id or ''))
                 return True
         return False
     except Exception as e:
@@ -989,7 +991,8 @@ def update_loaner_vehicle_on_apply(vehicle_number, employee_id, driver_name, app
 
 
 def update_work_cell_note_report(employee_id, month_sheet_name, day, report_value):
-    """해당 월·일의 근무 셀 메모에서 '보고사항'만 갱신 (없으면 추가)"""
+    """해당 월·일의 근무 셀 메모에서 '보고사항'만 갱신 (없으면 추가).
+    같은 사번이 야간/주간 등 여러 행일 수 있으므로, 해당일 메모에 '운행시작일시'가 있는 행(실제 근무 시작된 행)을 찾아 그 셀만 수정한다."""
     try:
         worksheet = get_worksheet(month_sheet_name)
         all_values = worksheet.get_all_values()
@@ -1006,16 +1009,9 @@ def update_work_cell_note_report(employee_id, month_sheet_name, day, report_valu
         except ValueError:
             return False
         from gspread.utils import rowcol_to_a1
-        for i, row in enumerate(all_values[1:], start=2):
-            if len(row) < emp_col:
-                continue
-            if str(row[emp_col - 1]).strip() != str(employee_id).strip():
-                continue
-            cell_address = rowcol_to_a1(i, date_col)
-            try:
-                note_text = worksheet.get_note(cell_address) if hasattr(worksheet, 'get_note') else None
-            except Exception:
-                note_text = get_note_via_api(worksheet, i, date_col)
+
+        def do_update(i, note_text):
+            """메모 내용을 보고사항만 갱신한 새 메모로 덮어쓰기"""
             note_text = note_text or ''
             lines = [ln.strip() for ln in note_text.split('\n') if ln.strip()]
             new_lines = []
@@ -1029,11 +1025,39 @@ def update_work_cell_note_report(employee_id, month_sheet_name, day, report_valu
             if not found:
                 new_lines.append(f"보고사항: {report_value}")
             new_note = '\n'.join(new_lines)
+            cell_address = rowcol_to_a1(i, date_col)
             if hasattr(worksheet, 'insert_note'):
                 worksheet.insert_note(cell_address, new_note)
             else:
                 add_note_via_api(worksheet, i, date_col, new_note)
             return True
+
+        first_matching_row = None  # 운행시작일시가 없는 경우 대비 첫 번째 매칭 행
+        for i, row in enumerate(all_values[1:], start=2):
+            if len(row) < emp_col:
+                continue
+            if str(row[emp_col - 1]).strip() != str(employee_id).strip():
+                continue
+            if first_matching_row is None:
+                first_matching_row = i
+            cell_address = rowcol_to_a1(i, date_col)
+            try:
+                note_text = worksheet.get_note(cell_address) if hasattr(worksheet, 'get_note') else None
+            except Exception:
+                note_text = get_note_via_api(worksheet, i, date_col)
+            note_text = note_text or ''
+            # 해당일 근무가 시작된 행 = 메모에 '운행시작일시'가 있는 셀
+            if '운행시작일시' in note_text or '운행시작일시:' in note_text:
+                return do_update(i, note_text)
+
+        # 해당일 '운행시작일시' 메모가 있는 행이 없으면, 사번 일치 첫 행에 반영 (폴백)
+        if first_matching_row is not None:
+            try:
+                nt = worksheet.get_note(rowcol_to_a1(first_matching_row, date_col)) if hasattr(worksheet, 'get_note') else None
+            except Exception:
+                nt = get_note_via_api(worksheet, first_matching_row, date_col)
+            return do_update(first_matching_row, nt or '')
+        return False
     except Exception as e:
         print(f"Error update_work_cell_note_report: {e}")
         return False
