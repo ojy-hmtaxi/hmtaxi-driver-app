@@ -994,6 +994,38 @@ body {
     border-color: #17a2b8;
 }
 
+/* 근무준비(work_start) 차량상태 전용: 정상=초록, 이상=노랑, 고장=빨강 (사고유무 스타일과 분리) */
+.vehicle-condition-group .status-btn.status-good {
+    border-color: #28a745;
+}
+.vehicle-condition-group .status-btn.status-good.status-active,
+.vehicle-condition-group .status-btn.status-good:hover {
+    background-color: #d4edda;
+    color: #155724;
+    border-color: #28a745;
+}
+.vehicle-condition-group .status-btn.status-bad {
+    border-color: #ffc107;
+}
+.vehicle-condition-group .status-btn.status-bad.status-active,
+.vehicle-condition-group .status-btn.status-bad:hover {
+    background-color: #fff3cd;
+    color: #856404;
+    border-color: #ffc107;
+}
+.vehicle-condition-group .status-btn.status-repair {
+    border-color: #dc3545;
+}
+.vehicle-condition-group .status-btn.status-repair.status-active,
+.vehicle-condition-group .status-btn.status-repair:hover {
+    background-color: #f8d7da;
+    color: #721c24;
+    border-color: #dc3545;
+}
+.vehicle-condition-group .status-btn.status-active {
+    font-weight: 600;
+}
+
 .status-icon {
     font-size: 16px;
     font-weight: bold;

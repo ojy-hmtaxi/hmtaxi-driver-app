@@ -792,8 +792,8 @@ def work_end():
     
     # 기본값 설정
     default_work_type = work_type_from_sheet
-    # 근무종료 step1에서는 보고사항을 비워둠 (근무준비와 별개)
-    default_special_notes = ''
+    # 해당일 근무 메모의 보고사항(대차 등)을 텍스트 박스 기본값으로 연결
+    default_special_notes = (today_info.get('special_notes') or '').strip() if today_info else ''
     
     return render_template('work_end_step1.html',
                          employee_id=employee_id,
