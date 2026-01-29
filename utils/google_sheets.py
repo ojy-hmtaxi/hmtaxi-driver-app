@@ -1003,18 +1003,26 @@ def update_work_cell_note_report(employee_id, month_sheet_name, day, report_valu
         from gspread.utils import rowcol_to_a1
 
         def do_update(i, note_text):
-            """메모 내용을 보고사항만 갱신한 새 메모로 덮어쓰기"""
+            """메모 내용을 보고사항만 갱신한 새 메모로 덮어쓰기 (기존 보고사항 유지하고 새 값 추가)"""
             note_text = note_text or ''
             lines = [ln.strip() for ln in note_text.split('\n') if ln.strip()]
             new_lines = []
             found = False
+            existing_report_value = None
             for ln in lines:
                 if ln.startswith('보고사항:'):
-                    new_lines.append(f"보고사항: {report_value}")
+                    # 기존 보고사항 값 추출 (콜론 뒤의 모든 내용)
+                    existing_report_value = ln.split(':', 1)[1].strip() if ':' in ln else ''
                     found = True
+                    # 기존 보고사항 줄을 새 줄로 교체 (기존 값 + ", " + 새 값)
+                    if existing_report_value:
+                        new_lines.append(f"보고사항: {existing_report_value}, {report_value}")
+                    else:
+                        new_lines.append(f"보고사항: {report_value}")
                 else:
                     new_lines.append(ln)
             if not found:
+                # 보고사항 줄이 없으면 추가
                 new_lines.append(f"보고사항: {report_value}")
             new_note = '\n'.join(new_lines)
             cell_address = rowcol_to_a1(i, date_col)
