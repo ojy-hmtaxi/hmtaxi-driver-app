@@ -164,8 +164,12 @@ document.addEventListener('DOMContentLoaded', function() {
         confirmBtn.disabled = true;
         confirmBtn.textContent = '처리 중...';
         
-        // 폼 제출
-        form.submit();
+        // 화면 업데이트를 위해 한 프레임 대기 후 폼 제출
+        requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+                form.submit();
+            });
+        });
     });
     
     // 모달 외부 클릭 시 닫기
