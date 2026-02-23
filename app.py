@@ -470,13 +470,13 @@ def calendar_view():
     total_fuel_cost = sales_summary.get('total_fuel_cost', 0)
     accident_count = sales_summary.get('accident_count', 0)
     
-    # 만근 기준 계산: 그 달의 총 일수 - 공휴일 - 일요일 = 근무일 + 휴무일
+    # 만근 기준 계산: 그 달의 총 일수 - 공휴일 - 일요일 <= (근무일 + 휴무일) - 결근일
     total_days_in_month = calendar.monthrange(year, month)[1]  # 그 달의 총 일수
     holiday_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == '/')  # 휴무일 개수
     public_holiday_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'H')  # 공휴일 개수
     sunday_count = sum(1 for day in range(1, total_days_in_month + 1) if calendar.weekday(year, month, day) == 6)  # 일요일 개수 (0=월..6=일)
-    full_attendance_threshold = total_days_in_month - public_holiday_count - sunday_count  # 만근 기준 (근무일+휴무일로 채워야 할 일수)
-    is_full_attendance = (work_days + holiday_days_count) >= full_attendance_threshold  # 만근 여부 (근무일 + 휴무일 >= 기준)
+    full_attendance_threshold = total_days_in_month - public_holiday_count - sunday_count  # 만근 기준
+    is_full_attendance = (work_days + holiday_days_count - absent_days) >= full_attendance_threshold  # (근무일+휴무일-결근일) >= 기준
     
     # 디버깅: 실제 값 출력 (프로덕션에서는 주석 처리)
     # absent_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X')  # 결근일 개수 (디버깅용)
