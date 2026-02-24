@@ -7,6 +7,7 @@ import os
 import config
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 한국 시간대 설정
 KST = ZoneInfo("Asia/Seoul")
@@ -69,6 +70,7 @@ class SimpleCache:
 # TTL 증가로 API 호출 횟수 감소 (데이터 변경 빈도가 낮으므로 안전)
 work_data_cache = SimpleCache(default_ttl=60)  # 근무 데이터는 60초 캐시
 sales_data_cache = SimpleCache(default_ttl=120)  # 매출 데이터는 120초 캐시
+work_start_info_cache = SimpleCache(default_ttl=60)  # 근무시작 정보(메모) 60초 캐시 → 캘린더 로딩 시 반복 호출 감소
 from utils.auth import authenticate_user, change_password, check_default_password
 from utils.google_sheets import (
     get_user_work_data, 
@@ -152,11 +154,22 @@ def has_sales_record_for_date_cached(employee_id, month_sheet_name, operation_da
     sales_data_cache.set(cache_key, result)
     return result
 
+def get_today_work_start_info_cached(employee_id, month_sheet_name, day):
+    """캐시를 사용하는 get_today_work_start_info 래퍼 (캘린더 로딩 시 메모/API 반복 호출 감소)"""
+    cache_key = f"work_start_info:{employee_id}:{month_sheet_name}:{day}"
+    cached = work_start_info_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    data = get_today_work_start_info(employee_id, month_sheet_name, day)
+    if data is not None:
+        work_start_info_cache.set(cache_key, data)
+    return data
+
 def get_work_start_info_with_fallback(employee_id, reference_date):
     """현재 날짜 기준으로 운행시작 정보를 찾고, 없으면 하루 전 정보를 반환"""
     month_name = config.MONTHS[reference_date.month - 1]
     day = reference_date.day
-    info = get_today_work_start_info(employee_id, month_name, day)
+    info = get_today_work_start_info_cached(employee_id, month_name, day)
     
     if info and info.get('work_date'):
         return info, reference_date, month_name, day
@@ -164,7 +177,7 @@ def get_work_start_info_with_fallback(employee_id, reference_date):
     previous_date = reference_date - timedelta(days=1)
     previous_month_name = config.MONTHS[previous_date.month - 1]
     previous_day = previous_date.day
-    previous_info = get_today_work_start_info(employee_id, previous_month_name, previous_day)
+    previous_info = get_today_work_start_info_cached(employee_id, previous_month_name, previous_day)
     
     if previous_info and previous_info.get('work_date'):
         return previous_info, previous_date, previous_month_name, previous_day
@@ -277,8 +290,12 @@ def calendar_view():
     # 현재 월의 시트 이름
     month_name = config.MONTHS[month - 1]
     
-    # 사용자의 근무 데이터 가져오기 (캐시 사용)
-    all_work_data = get_all_user_work_data_cached(employee_id, month_name)
+    # 근무 데이터·매출 요약 병렬 로딩 (캘린더 첫 화면 응답 속도 개선)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_work = executor.submit(get_all_user_work_data_cached, employee_id, month_name)
+        future_sales = executor.submit(get_user_sales_summary_cached, employee_id, month_name)
+        all_work_data = future_work.result()
+        sales_summary = (future_sales.result() or {})
     
     # 첫 번째 행을 기본 데이터로 사용 (기타 정보 표시용)
     work_data = all_work_data[0] if all_work_data and len(all_work_data) > 0 else None
@@ -360,7 +377,7 @@ def calendar_view():
             if yesterday_date.year == year and yesterday_date.month == month:
                 # 같은 월인 경우
                 if work_status.get(yesterday_day) == 'O':
-                    yesterday_info = get_today_work_start_info(employee_id, yesterday_month_name, yesterday_day)
+                    yesterday_info = get_today_work_start_info_cached(employee_id, yesterday_month_name, yesterday_day)
             else:
                 # 다른 월인 경우 (월이 바뀐 경우)
                 yesterday_all_work_data = get_all_user_work_data_cached(employee_id, yesterday_month_name)
@@ -370,7 +387,7 @@ def calendar_view():
                         if yesterday_day_str in record:
                             status_raw = str(record.get(yesterday_day_str, '')).strip().upper()
                             if status_raw == 'O':
-                                yesterday_info = get_today_work_start_info(employee_id, yesterday_month_name, yesterday_day)
+                                yesterday_info = get_today_work_start_info_cached(employee_id, yesterday_month_name, yesterday_day)
                                 break
             
             # 어제 날짜에 근무시작 정보가 있고, sales_DB_2026에 기록이 없으면 근무종료 버튼 활성화
@@ -409,7 +426,7 @@ def calendar_view():
             if yesterday_date.year == year and yesterday_date.month == month:
                 # 같은 월인 경우
                 if work_status.get(yesterday_day) == 'O':
-                    yesterday_info = get_today_work_start_info(employee_id, yesterday_month_name, yesterday_day)
+                    yesterday_info = get_today_work_start_info_cached(employee_id, yesterday_month_name, yesterday_day)
             else:
                 # 다른 월인 경우 (월이 바뀐 경우)
                 yesterday_all_work_data = get_all_user_work_data_cached(employee_id, yesterday_month_name)
@@ -419,7 +436,7 @@ def calendar_view():
                         if yesterday_day_str in record:
                             status_raw = str(record.get(yesterday_day_str, '')).strip().upper()
                             if status_raw == 'O':
-                                yesterday_info = get_today_work_start_info(employee_id, yesterday_month_name, yesterday_day)
+                                yesterday_info = get_today_work_start_info_cached(employee_id, yesterday_month_name, yesterday_day)
                                 break
             
             # 어제 날짜에 근무시작 정보가 있고, sales_DB_2026에 기록이 없으면 근무시작 버튼 비활성화
@@ -464,8 +481,7 @@ def calendar_view():
     
     current_date_only = current_date.date()
     
-    # 이달의 매출 합계·가해사고 수 가져오기 (캐시 사용, sales 시트 한 번만 사용)
-    sales_summary = get_user_sales_summary_cached(employee_id, month_name) or {}
+    # sales_summary는 이미 병렬 로딩에서 조회됨
     total_revenue = sales_summary.get('total_revenue', 0)
     total_fuel_cost = sales_summary.get('total_fuel_cost', 0)
     accident_count = sales_summary.get('accident_count', 0)
@@ -505,7 +521,8 @@ def calendar_view():
     today_replacement_vehicle = None
     today_replacement_vehicle_type = None
     if year == current_date.year and month == current_date.month and not can_start_work:
-        rep = get_today_replacement_display(employee_id, month_name, current_date.day)
+        today_info = get_today_work_start_info_cached(employee_id, month_name, current_date.day)
+        rep = get_today_replacement_display(employee_id, month_name, current_date.day, work_start_info=today_info)
         if rep:
             today_replacement_vehicle, today_replacement_vehicle_type = rep
     
@@ -558,6 +575,7 @@ def vehicle_replacement_apply():
             report_value = f"{vehicle_number} (대차)"
             if update_work_cell_note_report(employee_id, month_name, today_day, report_value):
                 work_data_cache.clear_pattern(f"work_data:{employee_id}:*")
+                work_start_info_cache.clear_pattern(f"work_start_info:{employee_id}:*")
                 flash('대차신청이 완료되었습니다.', 'success')
             else:
                 flash('보고사항 반영에 실패했습니다. 관리자에게 문의하세요.', 'error')
@@ -620,6 +638,7 @@ def work_start():
         if success:
             # 캐시 무효화 (근무 데이터 업데이트됨)
             work_data_cache.clear_pattern(f"work_data:{employee_id}:{month_name}")
+            work_start_info_cache.clear_pattern(f"work_start_info:{employee_id}:*")
             
             # 근무준비 완료 활동 로깅
             user_info = get_user_by_id(employee_id)

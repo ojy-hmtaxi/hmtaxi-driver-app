@@ -1063,18 +1063,23 @@ def update_work_cell_note_report(employee_id, month_sheet_name, day, report_valu
         return False
 
 
-def get_today_replacement_display(employee_id, month_sheet_name, day):
-    """오늘(해당일) 근무 셀 메모의 보고사항에서 대차 차량이 있으면 (차량번호, 차종) 반환"""
+def get_today_replacement_display(employee_id, month_sheet_name, day, work_start_info=None):
+    """오늘(해당일) 근무 셀 메모의 보고사항에서 대차 차량이 있으면 (차량번호, 차종) 반환. 차량번호만 반환(보고사항 기타 문구 제외).
+    work_start_info: 이미 조회한 근무시작 정보가 있으면 전달하여 중복 API 호출 방지."""
     try:
-        info = get_today_work_start_info(employee_id, month_sheet_name, day)
+        info = work_start_info if work_start_info is not None else get_today_work_start_info(employee_id, month_sheet_name, day)
         if not info:
             return None
         # 대차 시 '보고사항' 줄에 기록되므로 special_notes에서 확인 (레거시는 vehicle_condition)
         remark = (info.get('special_notes') or info.get('vehicle_condition') or '').strip()
         if '(대차)' not in remark:
             return None
-        # "33바1810 (대차)" 형태에서 번호 추출
-        num = remark.replace('(대차)', '').strip()
+        # "이상없음, 33바1813 (대차)" 형태에서 대차 차량번호만 추출: "(대차)" 바로 앞의 마지막 콤마 구간
+        idx = remark.find('(대차)')
+        num_part = remark[:idx].strip()
+        if not num_part:
+            return None
+        num = num_part.split(',')[-1].strip().replace(' ', '')  # 공백 제거하여 시트 매칭·표시 통일
         if not num:
             return None
         ws = get_worksheet(LOANER_SHEET_NAME)
@@ -1089,7 +1094,7 @@ def get_today_replacement_display(employee_id, month_sheet_name, day):
         for row in all_values[1:]:
             if len(row) <= max(nc, tc):
                 continue
-            if str(row[nc]).strip() == num:
+            if str(row[nc]).strip().replace(' ', '') == num:
                 return (num, str(row[tc]).strip() if tc >= 0 and len(row) > tc else '')
         return (num, '')
     except Exception as e:
