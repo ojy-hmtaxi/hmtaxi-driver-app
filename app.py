@@ -575,7 +575,7 @@ def vehicle_replacement_apply():
             report_value = f"{vehicle_number} (대차)"
             if update_work_cell_note_report(employee_id, month_name, today_day, report_value):
                 work_data_cache.clear_pattern(f"work_data:{employee_id}:*")
-                work_start_info_cache.clear_pattern(f"work_start_info:{employee_id}:*")
+                work_start_info_cache.clear_pattern(f"work_start_info:{employee_id}:")
                 flash('대차신청이 완료되었습니다.', 'success')
             else:
                 flash('보고사항 반영에 실패했습니다. 관리자에게 문의하세요.', 'error')
@@ -638,7 +638,7 @@ def work_start():
         if success:
             # 캐시 무효화 (근무 데이터 업데이트됨)
             work_data_cache.clear_pattern(f"work_data:{employee_id}:{month_name}")
-            work_start_info_cache.clear_pattern(f"work_start_info:{employee_id}:*")
+            work_start_info_cache.clear_pattern(f"work_start_info:{employee_id}:")
             
             # 근무준비 완료 활동 로깅
             user_info = get_user_by_id(employee_id)
