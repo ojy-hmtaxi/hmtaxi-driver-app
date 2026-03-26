@@ -7,7 +7,7 @@ import os
 import config
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 # 한국 시간대 설정
 KST = ZoneInfo("Asia/Seoul")
@@ -82,7 +82,6 @@ from utils.google_sheets import (
     add_sales_record,
     get_today_work_start_info,
     get_user_sales_summary,
-    has_sales_record_for_date,
     get_loaner_vehicles,
     update_loaner_vehicle_on_apply,
     update_work_cell_note_report,
@@ -144,15 +143,11 @@ def get_user_sales_summary_cached(employee_id, month_sheet_name):
     return data
 
 def has_sales_record_for_date_cached(employee_id, month_sheet_name, operation_date):
-    """캐시를 사용하는 has_sales_record_for_date 래퍼 (캘린더 로딩 시 반복 호출 감소)"""
+    """월 단위 매출 요약 캐시의 operation_dates만 사용 (날짜별 Sheets 재조회 없음)"""
     date_norm = str(operation_date).replace('-', '/')
-    cache_key = f"has_sales:{employee_id}:{month_sheet_name}:{date_norm}"
-    cached = sales_data_cache.get(cache_key)
-    if cached is not None:
-        return bool(cached)
-    result = has_sales_record_for_date(employee_id, month_sheet_name, operation_date)
-    sales_data_cache.set(cache_key, result)
-    return result
+    bundle = get_user_sales_summary_cached(employee_id, month_sheet_name) or {}
+    dates = bundle.get('operation_dates') or set()
+    return date_norm in dates
 
 def get_today_work_start_info_cached(employee_id, month_sheet_name, day):
     """캐시를 사용하는 get_today_work_start_info 래퍼 (캘린더 로딩 시 메모/API 반복 호출 감소)"""
@@ -340,11 +335,21 @@ def calendar_view():
                 work_status[day] = best_status
                 record_for_day[day] = best_record
     
-    # 근무일수와 결근일수 계산 (work_status에서 직접 계산하여 정확도 보장)
-    # work_status에서 해당 월의 유효한 날짜 범위 내에서 직접 계산
-    total_days_in_month_for_calc = calendar.monthrange(year, month)[1]
-    work_days = sum(1 for day in range(1, total_days_in_month_for_calc + 1) if work_status.get(day) == 'O')  # 근무일수 (O 상태)
-    absent_days = sum(1 for day in range(1, total_days_in_month_for_calc + 1) if work_status.get(day) == 'X')  # 결근일수 (X 상태)
+    # 근무일수·결근일수: work_DB G열·H열(같은 사번 모든 행 합산) — 시트 표시값과 일치
+    work_days = 0
+    absent_days = 0
+    if all_work_data:
+        for rec in all_work_data:
+            try:
+                wv = rec.get('근무일수', '') or 0
+                work_days += int(wv) if str(wv).strip() != '' else 0
+            except (ValueError, TypeError):
+                pass
+            try:
+                av = rec.get('결근일수', '') or 0
+                absent_days += int(av) if str(av).strip() != '' else 0
+            except (ValueError, TypeError):
+                pass
     
     # 오늘 날짜에 배정받은 차량번호와 차종 찾기
     today_vehicle = None

@@ -2,6 +2,11 @@
 
 {% block title %}근무일정 - 근무 관리 시스템{% endblock %}
 
+{% block extra_head %}
+<link rel="prefetch" href="{{ url_for('calendar_view', year=prev_year, month=prev_month) }}">
+<link rel="prefetch" href="{{ url_for('calendar_view', year=next_year, month=next_month) }}">
+{% endblock %}
+
 {% block content %}
 <div class="calendar-container">
     <div class="header">
@@ -156,6 +161,22 @@
 
 {% block extra_scripts %}
 <script>
+(function() {
+    var warmUrls = [
+        "{{ url_for('calendar_view', year=prev_year, month=prev_month) }}",
+        "{{ url_for('calendar_view', year=next_year, month=next_month) }}"
+    ];
+    function warmAdjacentMonths() {
+        warmUrls.forEach(function(u) {
+            fetch(u, { credentials: 'same-origin', priority: 'low' }).catch(function() {});
+        });
+    }
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(warmAdjacentMonths, { timeout: 4000 });
+    } else {
+        setTimeout(warmAdjacentMonths, 1500);
+    }
+})();
 document.addEventListener('DOMContentLoaded', function() {
     const logoutBtn = document.getElementById('logoutBtn');
     const logoutModal = document.getElementById('logoutModal');

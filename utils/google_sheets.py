@@ -190,12 +190,37 @@ def update_user_password(employee_id, password_hash):
         traceback.print_exc()
         return False
 
+# 캘린더·근무 조회 시 시트 전체 대신 읽는 열 범위 (전송량·API 부담 감소)
+WORK_DB_READ_RANGE = 'A:AM'  # 차량·사번·근무일수·결근일수·일별 상태(31일)까지
+SALES_DB_READ_RANGE = 'A:N'  # 요약·운행일 판별에 필요한 열
+
+
+def _rows_to_dict_records(raw_rows):
+    """시트 2차원 배열을 get_all_records와 유사한 dict 리스트로 변환"""
+    if not raw_rows:
+        return []
+    header = [str(h).strip() for h in raw_rows[0]]
+    records = []
+    for row in raw_rows[1:]:
+        rec = {}
+        for i, key in enumerate(header):
+            if not key:
+                continue
+            val = row[i] if i < len(row) else ''
+            rec[key] = '' if val is None or val == '' else str(val).strip()
+        if rec.get('사번'):
+            records.append(rec)
+    return records
+
+
 def get_monthly_work_data(month_sheet_name):
-    """월별 근무 데이터 가져오기"""
+    """월별 근무 데이터 가져오기 (A:AM 범위만 조회, 캘린더·근무표에 충분)"""
     try:
         worksheet = get_worksheet(month_sheet_name)
-        records = worksheet.get_all_records()
-        return records
+        raw = worksheet.get_values(WORK_DB_READ_RANGE)
+        if not raw:
+            return []
+        return _rows_to_dict_records(raw)
     except Exception as e:
         print(f"Error getting monthly work data: {e}")
         return []
@@ -759,8 +784,18 @@ def add_sales_record(month_sheet_name, sales_data, note_text=None, vehicle_condi
         traceback.print_exc()
         return False
 
+def _normalize_sales_operation_date(operation_date):
+    if not operation_date:
+        return ''
+    s = str(operation_date).strip()
+    if '-' in s:
+        return s.replace('-', '/')
+    return s
+
+
 def get_user_sales_summary(employee_id, month_sheet_name):
-    """sales_DB_2026에서 특정 사번의 월별 매출 합계 가져오기
+    """sales_DB_2026에서 특정 사번의 월별 매출 합계 가져오기 (A:N 범위만 조회).
+    같은 스캔으로 운행일 집합(operation_dates)을 채워 has_sales_record 에서 재사용한다.
     
     Args:
         employee_id: 사번
@@ -770,21 +805,17 @@ def get_user_sales_summary(employee_id, month_sheet_name):
         dict: {
             'total_revenue': 총 매출 (현금운임 + 카드운임),
             'total_fuel_cost': 총 연료비,
-            'accident_count': 가해사고 건수
+            'accident_count': 가해사고 건수,
+            'operation_dates': set of 'YYYY/MM/DD' (해당 사번 행의 운행일, 날짜별 Sheets 재조회 방지용)
         }
     """
     try:
         worksheet = get_sales_worksheet(month_sheet_name)
+        all_values = worksheet.get_values(SALES_DB_READ_RANGE)
+        if not all_values or len(all_values) < 2:
+            return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
         
-        # 헤더 가져오기
-        header = worksheet.row_values(1)
-        header = [str(h).strip() for h in header]
-        
-        # 모든 데이터 가져오기
-        all_values = worksheet.get_all_values()
-        
-        if len(all_values) < 2:  # 헤더만 있거나 데이터가 없음
-            return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0}
+        header = [str(h).strip() for h in all_values[0]]
         
         # 컬럼 인덱스 찾기
         try:
@@ -794,19 +825,23 @@ def get_user_sales_summary(employee_id, month_sheet_name):
             fuel_cost_col_idx = header.index('연료비')
         except ValueError as e:
             print(f"Error: Required column not found in sales sheet: {e}")
-            return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0}
+            return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
         
         accident_col_idx = header.index('사고유무') if '사고유무' in header else None
+        operation_date_col_idx = header.index('운행일') if '운행일' in header else None
         
         total_revenue = 0
         total_fuel_cost = 0
         accident_count = 0
+        operation_dates = set()
         
         # 데이터 행 처리 (헤더 제외, 인덱스 1부터)
         for row_idx, row in enumerate(all_values[1:], start=2):
             max_col = max(employee_id_col_idx, cash_fare_col_idx, card_fare_col_idx, fuel_cost_col_idx)
             if accident_col_idx is not None:
                 max_col = max(max_col, accident_col_idx)
+            if operation_date_col_idx is not None:
+                max_col = max(max_col, operation_date_col_idx)
             if len(row) <= max_col:
                 continue
             
@@ -814,6 +849,11 @@ def get_user_sales_summary(employee_id, month_sheet_name):
             row_employee_id = str(row[employee_id_col_idx]).strip()
             if row_employee_id != str(employee_id):
                 continue
+            
+            if operation_date_col_idx is not None and len(row) > operation_date_col_idx:
+                od = _normalize_sales_operation_date(row[operation_date_col_idx])
+                if od:
+                    operation_dates.add(od)
             
             # 현금운임
             try:
@@ -848,69 +888,23 @@ def get_user_sales_summary(employee_id, month_sheet_name):
         return {
             'total_revenue': total_revenue,
             'total_fuel_cost': total_fuel_cost,
-            'accident_count': accident_count
+            'accident_count': accident_count,
+            'operation_dates': operation_dates,
         }
     except Exception as e:
         print(f"Error getting user sales summary: {e}")
         import traceback
         traceback.print_exc()
-        return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0}
+        return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
 
 def has_sales_record_for_date(employee_id, month_sheet_name, operation_date):
-    """sales_DB_2026에서 특정 날짜에 해당 사번의 매출 기록이 있는지 확인
-    
-    Args:
-        employee_id: 사번
-        month_sheet_name: 월별 시트 이름 (예: '11월')
-        operation_date: 운행일 (형식: 'YYYY/MM/DD' 또는 'YYYY-MM-DD')
-    
-    Returns:
-        bool: 기록이 있으면 True, 없으면 False
-    """
+    """매출 시트를 다시 읽지 않고 get_user_sales_summary와 동일 스캔 결과(운행일 집합)로 판별.
+    단독 호출 시 1회 A:N 조회만 수행."""
     try:
-        worksheet = get_sales_worksheet(month_sheet_name)
-        
-        # 헤더 가져오기
-        header = worksheet.row_values(1)
-        header = [str(h).strip() for h in header]
-        
-        # 모든 데이터 가져오기
-        all_values = worksheet.get_all_values()
-        
-        if len(all_values) < 2:  # 헤더만 있거나 데이터가 없음
-            return False
-        
-        # 컬럼 인덱스 찾기
-        try:
-            employee_id_col_idx = header.index('사번')
-            operation_date_col_idx = header.index('운행일')
-        except ValueError:
-            return False
-        
-        # operation_date 형식 정규화 (YYYY/MM/DD 또는 YYYY-MM-DD)
-        if '/' in operation_date:
-            normalized_date = operation_date
-        elif '-' in operation_date:
-            normalized_date = operation_date.replace('-', '/')
-        else:
-            normalized_date = operation_date
-        
-        # 데이터 행 확인 (헤더 제외, 인덱스 1부터)
-        for row in all_values[1:]:
-            if len(row) <= max(employee_id_col_idx, operation_date_col_idx):
-                continue
-            
-            # 사번 확인
-            row_employee_id = str(row[employee_id_col_idx]).strip()
-            if row_employee_id != str(employee_id):
-                continue
-            
-            # 운행일 확인
-            row_operation_date = str(row[operation_date_col_idx]).strip()
-            if row_operation_date == normalized_date:
-                return True
-        
-        return False
+        summary = get_user_sales_summary(employee_id, month_sheet_name)
+        dates = summary.get('operation_dates') or set()
+        normalized_date = _normalize_sales_operation_date(operation_date)
+        return normalized_date in dates
     except Exception as e:
         print(f"Error checking sales record for date: {e}")
         return False
