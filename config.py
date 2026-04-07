@@ -39,3 +39,7 @@ PASSWORD_MAX_LENGTH = 4
 MONTHS = ['1월', '2월', '3월', '4월', '5월', '6월', 
           '7월', '8월', '9월', '10월', '11월', '12월']
 
+# 근무 이력(/work-history): 당해 연도 기준 reference 월까지 역으로 조회할 월 수 (1~12).
+# 12(기본) = 1~12월 시트 전부. 6 등으로 두면 최근 6개월치 시트만 API 호출 (속도·쿼터 절약).
+WORK_HISTORY_RECENT_MONTHS = int(os.environ.get('WORK_HISTORY_RECENT_MONTHS', '12'))
+

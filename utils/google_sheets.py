@@ -1,4 +1,6 @@
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 import gspread
 from google.oauth2.service_account import Credentials
 import config
@@ -214,10 +216,12 @@ def _rows_to_dict_records(raw_rows):
     return records
 
 
-def get_monthly_work_data(month_sheet_name):
-    """월별 근무 데이터 가져오기 (A:AM 범위만 조회, 캘린더·근무표에 충분)"""
+def get_monthly_work_data(month_sheet_name, spreadsheet=None):
+    """월별 근무 데이터 가져오기 (A:AM 범위만 조회, 캘린더·근무표에 충분).
+    spreadsheet가 있으면 get_spreadsheet() 재호출 없이 해당 통합문서에서 시트만 연다."""
     try:
-        worksheet = get_worksheet(month_sheet_name)
+        ss = spreadsheet if spreadsheet is not None else get_spreadsheet()
+        worksheet = ss.worksheet(month_sheet_name)
         raw = worksheet.get_values(WORK_DB_READ_RANGE)
         if not raw:
             return []
@@ -238,10 +242,10 @@ def get_user_work_data(employee_id, month_sheet_name):
         print(f"Error getting user work data: {e}")
         return None
 
-def get_all_user_work_data(employee_id, month_sheet_name):
+def get_all_user_work_data(employee_id, month_sheet_name, spreadsheet=None):
     """특정 사용자의 월별 근무 데이터 가져오기 (같은 사번의 모든 행 반환)"""
     try:
-        records = get_monthly_work_data(month_sheet_name)
+        records = get_monthly_work_data(month_sheet_name, spreadsheet)
         user_records = []
         for record in records:
             if str(record.get('사번', '')).strip() == str(employee_id).strip():
@@ -533,41 +537,111 @@ def get_all_months_data(employee_id):
             all_data[month] = data
     return all_data
 
-def get_all_months_aggregated_data(employee_id):
-    """사용자의 모든 월별 데이터 가져오기 (같은 사번의 모든 행 합산)"""
+
+def work_history_month_sheet_names(reference_date, recent_months):
+    """근무 이력용: 당해 기준 조회할 월 시트 이름 목록.
+    recent_months가 None이거나 12 이상이면 1~12월 전부.
+    그 외에는 reference_date.month까지 역으로 최대 N개(연초 이후 월 수까지만)."""
+    if recent_months is None or int(recent_months) >= 12:
+        return list(config.MONTHS)
+    n = max(1, min(12, int(recent_months)))
+    m = reference_date.month
+    start_idx = max(0, m - n)
+    return config.MONTHS[start_idx:m]
+
+
+def _aggregate_user_month_records(all_records):
+    """같은 월·같은 사번의 모든 행을 근무 이력용 dict 한 개로 합산."""
+    if not all_records:
+        return None
+    aggregated = {}
+    first_record = all_records[0]
+    for key, value in first_record.items():
+        if key not in ['근무일수', '결근일수', '인정일수']:
+            aggregated[key] = value
+    work_days_total = 0
+    absent_days_total = 0
+    for record in all_records:
+        try:
+            work_days_val = record.get('근무일수', 0) or 0
+            work_days_total += int(work_days_val) if work_days_val else 0
+        except (ValueError, TypeError):
+            pass
+        try:
+            absent_days_val = record.get('결근일수', 0) or 0
+            absent_days_total += int(absent_days_val) if absent_days_val else 0
+        except (ValueError, TypeError):
+            pass
+    aggregated['근무일수'] = work_days_total
+    aggregated['결근일수'] = absent_days_total
+    return aggregated
+
+
+def _work_history_fetch_one_month(employee_id, month_name, spreadsheet, work_data_cache):
+    """한 개월 시트 조회 → 사번 필터 → 집계. work_data_cache는 app.SimpleCache( get/set )."""
+    cache_key = f"work_data:{employee_id}:{month_name}"
+    if work_data_cache is not None:
+        cached = work_data_cache.get(cache_key)
+        if cached is not None:
+            return month_name, _aggregate_user_month_records(cached)
+    records = get_monthly_work_data(month_name, spreadsheet)
+    user_records = []
+    for record in records:
+        if str(record.get('사번', '')).strip() == str(employee_id).strip():
+            user_records.append(record)
+    user_list = user_records if user_records else None
+    if work_data_cache is not None and user_list is not None:
+        work_data_cache.set(cache_key, user_list)
+    return month_name, _aggregate_user_month_records(user_list)
+
+
+def get_all_months_aggregated_data(
+    employee_id,
+    reference_date=None,
+    recent_months=None,
+    work_data_cache=None,
+    max_workers=8,
+):
+    """사용자의 월별 근무 데이터 합산 (근무 이력 차트용).
+
+    - reference_date: 기준일(당해 연도·월). 기본 오늘(서버 로컬 date; 호출부에서 KST 넘기 권장).
+    - recent_months: 조회할 월 시트 개수(당해, reference 월까지 역으로). None/12 이상이면 1~12월 전부.
+    - work_data_cache: 캘린더와 동일 키(work_data:사번:월)로 per-month 리스트 캐시.
+    - spreadsheet는 1회만 연 뒤 워커에서 시트만 전환(get_monthly_work_data(..., spreadsheet)).
+    """
+    ref = reference_date or date.today()
+    if recent_months is None:
+        recent_months = 12
+    month_names = work_history_month_sheet_names(ref, recent_months)
+    if not month_names:
+        return {}
+    spreadsheet = get_spreadsheet()
     all_data = {}
-    for month in config.MONTHS:
-        all_records = get_all_user_work_data(employee_id, month)
-        if all_records:
-            # 근무일수와 결근일수 합산
-            aggregated = {}
-            work_days_total = 0
-            absent_days_total = 0
-            
-            # 첫 번째 행의 데이터를 기본으로 사용
-            first_record = all_records[0]
-            for key, value in first_record.items():
-                # 근무일수, 결근일수, 인정일수는 별도로 계산/처리하므로 제외
-                if key not in ['근무일수', '결근일수', '인정일수']:
-                    aggregated[key] = value
-            
-            # 근무일수와 결근일수 합산
-            for record in all_records:
-                try:
-                    work_days_val = record.get('근무일수', 0) or 0
-                    work_days_total += int(work_days_val) if work_days_val else 0
-                except (ValueError, TypeError):
-                    pass
-                try:
-                    absent_days_val = record.get('결근일수', 0) or 0
-                    absent_days_total += int(absent_days_val) if absent_days_val else 0
-                except (ValueError, TypeError):
-                    pass
-            
-            aggregated['근무일수'] = work_days_total
-            aggregated['결근일수'] = absent_days_total
-            all_data[month] = aggregated
-    
+    workers = min(max(1, int(max_workers)), len(month_names))
+    if len(month_names) == 1:
+        try:
+            mn, agg = _work_history_fetch_one_month(
+                employee_id, month_names[0], spreadsheet, work_data_cache
+            )
+            if agg:
+                all_data[mn] = agg
+        except Exception as e:
+            print(f"Error in work history month fetch ({month_names[0]}): {e}")
+        return all_data
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [
+            executor.submit(
+                _work_history_fetch_one_month, employee_id, mn, spreadsheet, work_data_cache
+            )
+            for mn in month_names
+        ]
+        for fut in as_completed(futures):
+            try:
+                mn, agg = fut.result()
+                if agg:
+                    all_data[mn] = agg
+            except Exception as e:
+                print(f"Error in work history month fetch: {e}")
     return all_data
 
 def get_today_work_start_info(employee_id, month_sheet_name, day):

@@ -1032,8 +1032,13 @@ def work_history():
     """월별 근무이력 시각화"""
     employee_id = session.get('employee_id')
     
-    # 모든 월별 데이터 가져오기 (같은 사번의 모든 행 합산)
-    all_data = get_all_months_aggregated_data(employee_id)
+    # 월별 근무 합산: 스프레드시트 1회 열기 + 월 병렬 조회 + work_data 캐시 연동 + 조회 월 수 제한(설정)
+    all_data = get_all_months_aggregated_data(
+        employee_id,
+        reference_date=get_kst_now().date(),
+        recent_months=config.WORK_HISTORY_RECENT_MONTHS,
+        work_data_cache=work_data_cache,
+    )
     
     if not all_data:
         flash('근무 이력 데이터가 없습니다.', 'info')
