@@ -30,8 +30,10 @@
                             <td>{{ v['차종'] }}</td>
                             <td class="return-time-strict">{{ v['복귀시간(엄수)'] or '-' }}</td>
                             <td>
-                                <input type="radio" name="vehicle_number" value="{{ v['차량번호'] }}" id="vehicle_{{ loop.index }}" required>
-                                <label for="vehicle_{{ loop.index }}" class="radio-label"><i class="bi bi-check-circle-fill"></i></label>
+                                <label class="radio-label" for="vehicle_{{ loop.index }}">
+                                    <input type="radio" name="vehicle_number" value="{{ v['차량번호'] }}" id="vehicle_{{ loop.index }}" required>
+                                    <span class="radio-label-visual"><i class="bi bi-check-circle-fill" aria-hidden="true"></i><span class="visually-hidden">{{ v['차량번호'] }} 선택</span></span>
+                                </label>
                             </td>
                         </tr>
                         {% endfor %}

@@ -16,36 +16,36 @@
     <div class="work-prepare-box">
         <form method="POST" action="{{ url_for('work_start') }}" class="work-prepare-form" id="workPrepareForm">
             <div class="form-group">
-                <label>운행 차량</label>
+                <div class="form-group-label" id="workStartVehicleLabel">운행 차량</div>
                 {% if assigned_vehicle %}
-                    <div class="vehicle-display">
+                    <div class="vehicle-display" role="status" aria-labelledby="workStartVehicleLabel">
                         서울{{ assigned_vehicle }}{% if assigned_vehicle_type %} - {{ assigned_vehicle_type }}{% endif %}
                     </div>
-                    <input type="hidden" name="vehicle_number" value="{{ assigned_vehicle }}">
+                    <input type="hidden" name="vehicle_number" value="{{ assigned_vehicle }}" id="workStartVehicleHidden" aria-hidden="true">
                 {% else %}
-                    <div class="vehicle-display vehicle-not-assigned">
+                    <div class="vehicle-display vehicle-not-assigned" role="status" aria-labelledby="workStartVehicleLabel">
                         배정된 차량이 없습니다.
                     </div>
-                    <input type="hidden" name="vehicle_number" value="">
+                    <input type="hidden" name="vehicle_number" value="" id="workStartVehicleHidden" aria-hidden="true">
                 {% endif %}
             </div>
 
             <div class="form-group">
-                <label>근무예정일 확인</label>
+                <div class="form-group-label" id="workStartPlannedDateLabel">근무예정일 확인</div>
                 <div class="warning-message">
                     ※ 야간 운행시작일이 근무예정일보다 늦은 경우,<br>날짜를 하루 전으로 설정해 주세요.
                 </div>
-                <div class="date-selector">
-                    <button type="button" class="date-btn date-btn-minus" id="dateMinusBtn"><i class="bi bi-dash-circle-fill"></i></button>
-                    <div class="date-display-selector" id="selectedDateDisplay">{{ year }} / {{ month }} / {{ day }}</div>
-                    <button type="button" class="date-btn date-btn-plus" id="datePlusBtn"><i class="bi bi-plus-circle-fill"></i></button>
+                <div class="date-selector" role="group" aria-labelledby="workStartPlannedDateLabel">
+                    <button type="button" class="date-btn date-btn-minus" id="dateMinusBtn" aria-label="하루 전"><i class="bi bi-dash-circle-fill" aria-hidden="true"></i></button>
+                    <div class="date-display-selector" id="selectedDateDisplay" role="status" aria-live="polite">{{ year }} / {{ month }} / {{ day }}</div>
+                    <button type="button" class="date-btn date-btn-plus" id="datePlusBtn" aria-label="하루 후"><i class="bi bi-plus-circle-fill" aria-hidden="true"></i></button>
                 </div>
-                <input type="hidden" name="selected_date" id="selectedDateInput" value="{{ year }}-{{ month }}-{{ day }}">
+                <input type="hidden" name="selected_date" id="selectedDateInput" value="{{ year }}-{{ month }}-{{ day }}" aria-labelledby="workStartPlannedDateLabel">
             </div>
             
             <div class="form-group">
-                <label for="work_date">운행시작일시</label>
-                <div class="date-display">{{ work_datetime_display }}</div>
+                <div class="form-group-label" id="workStartDateTimeLabel">운행시작일시</div>
+                <div class="date-display" role="status" aria-labelledby="workStartDateTimeLabel">{{ work_datetime_display }}</div>
                 <div class="work-type-toggle">
                     <input type="radio" id="work_type_day" name="work_type" value="주간" {% if work_type_from_sheet == '주간' %}checked{% endif %} disabled>
                     <label for="work_type_day" class="toggle-btn {% if work_type_from_sheet == '주간' %}toggle-active{% endif %}">주간</label>
@@ -65,8 +65,8 @@
                 <input type="hidden" name="work_type" value="{{ work_type_from_sheet }}">
             </div>
             
-            <div class="form-group vehicle-condition-group">
-                <label>차량상태 <span class="required">*</span></label>
+            <fieldset class="form-group vehicle-condition-group">
+                <legend>차량상태 <span class="required">*</span></legend>
                 <div class="vehicle-status-toggle">
                     <input type="radio" id="vehicle_good" name="vehicle_condition" value="정상" checked>
                     <label for="vehicle_good" class="status-btn status-good status-active">
@@ -83,7 +83,7 @@
                         <span class="status-icon">X</span> 고장
                     </label>
                 </div>
-            </div>
+            </fieldset>
             
             <div class="form-group">
                 <label for="special_notes">보고사항 (선택)</label>

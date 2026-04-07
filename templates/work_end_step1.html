@@ -16,23 +16,23 @@
     <div class="work-prepare-box">
         <form method="POST" action="{{ url_for('work_end') }}" class="work-prepare-form" id="workEndStep1Form">
             <div class="form-group">
-                <label>운행 차량</label>
+                <div class="form-group-label" id="workEndVehicleLabel">운행 차량</div>
                 {% if assigned_vehicle %}
-                    <div class="vehicle-display">
+                    <div class="vehicle-display" role="status" aria-labelledby="workEndVehicleLabel">
                         서울{{ assigned_vehicle }}{% if assigned_vehicle_type %} - {{ assigned_vehicle_type }}{% endif %}
                     </div>
-                    <input type="hidden" name="vehicle_number" value="{{ assigned_vehicle }}">
+                    <input type="hidden" name="vehicle_number" value="{{ assigned_vehicle }}" id="workEndVehicleHidden" aria-hidden="true">
                     {% else %}
-                    <div class="vehicle-display vehicle-not-assigned">
+                    <div class="vehicle-display vehicle-not-assigned" role="status" aria-labelledby="workEndVehicleLabel">
                         배정된 차량이 없습니다.
                     </div>
-                    <input type="hidden" name="vehicle_number" value="">
+                    <input type="hidden" name="vehicle_number" value="" id="workEndVehicleHidden" aria-hidden="true">
                     {% endif %}
             </div>
             
             <div class="form-group">
-                <label for="work_date">운행일</label>
-                <div class="date-display">{{ work_date_display }}</div>
+                <div class="form-group-label" id="workEndOperationDateLabel">운행일</div>
+                <div class="date-display" role="status" aria-labelledby="workEndOperationDateLabel">{{ work_date_display }}</div>
                 <div class="work-type-toggle">
                     <input type="radio" id="work_type_day" name="work_type" value="주간" {% if work_type_from_sheet == '주간' %}checked{% endif %} disabled>
                     <label for="work_type_day" class="toggle-btn {% if work_type_from_sheet == '주간' %}toggle-active{% endif %}">주간</label>
@@ -52,8 +52,8 @@
                 <input type="hidden" name="work_type" value="{{ work_type_from_sheet }}">
             </div>
             
-            <div class="form-group">
-                <label>사고유무 <span class="required">*</span></label>
+            <fieldset class="form-group">
+                <legend>사고유무 <span class="required">*</span></legend>
                 <div class="vehicle-status-toggle">
                     <input type="radio" id="accident_none" name="accident_status" value="무사고" required>
                     <label for="accident_none" class="status-btn status-good">
@@ -70,7 +70,7 @@
                         <span class="status-icon">⛨</span> 피해사고
                     </label>
                 </div>
-            </div>
+            </fieldset>
             
             <div class="form-group">
                 <label for="special_notes">보고사항 (선택)</label>

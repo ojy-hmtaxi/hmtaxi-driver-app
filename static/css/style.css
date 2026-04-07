@@ -76,7 +76,7 @@ body {
     padding: 10px 20px;
     border: none;
     border-radius: 4px;
-    font-size: 16px;
+    font-size: 18px;
     text-align: center;
     text-decoration: none;
     cursor: pointer;
@@ -169,6 +169,19 @@ body {
     color: #333;
 }
 
+/* 스크린 리더 전용 텍스트 */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* 폼 스타일 */
 .form-group {
     margin-bottom: 20px;
@@ -177,11 +190,46 @@ body {
 .form-group label {
     display: block;
     margin-bottom: 8px;
+    font-size: 18px;
     font-weight: 600;
     color: #555;
 }
 
-.form-group label .required {
+/* 읽기 전용 구간 제목 (<label for>를 쓸 수 없을 때) */
+.form-group-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #555;
+}
+
+.form-group fieldset,
+fieldset.form-group {
+    border: none;
+    margin: 0 0 20px 0;
+    padding: 0;
+    min-width: 0;
+    outline: none;
+    box-shadow: none;
+}
+
+.form-group fieldset legend,
+fieldset.form-group legend {
+    display: block;
+    width: 100%;
+    margin-bottom: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #555;
+    padding: 0;
+    border: none;
+    float: none;
+}
+
+.form-group label .required,
+.form-group-label .required,
+.form-group legend .required {
     color: #e74c3c;
     margin-left: 2px;
 }
@@ -210,7 +258,7 @@ body {
     padding: 12px;
     border: 1px solid #ddd;
     border-radius: 4px;
-    font-size: 16px;
+    font-size: 17px;
     background-color: #f8f9fa;
     color: #333;
     font-weight: 500;
@@ -533,7 +581,7 @@ body {
 }
 
 .day-number {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     margin-bottom: 4px;
     position: relative;
@@ -545,8 +593,8 @@ body {
     bottom: 8px;
     left: 50%;
     transform: translateX(-50%);
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     background-color: #ffe056;
     border: 1px solid #777777;
     border-radius: 50%;
@@ -554,7 +602,7 @@ body {
 }
 
 .work-status {
-    font-size: 11px;
+    font-size: 16px;
     padding: 2px 4px;
     border-radius: 3px;
     display: inline-block;
@@ -733,7 +781,7 @@ body {
 
 .replacement-apply-desc {
     color: #666;
-    font-size: 14px;
+    font-size: 17px;
     margin-bottom: 20px;
     line-height: 1.5;
 }
@@ -748,7 +796,7 @@ body {
 .replacement-apply-form .vehicle-list-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 15px;
+    font-size: 17px;
 }
 
 .replacement-apply-form .vehicle-list-table th,
@@ -772,8 +820,20 @@ body {
     background-color: #f8f9fa;
 }
 
-.replacement-apply-form .vehicle-list-table input[type="radio"] {
-    display: none;
+.replacement-apply-form .vehicle-list-table td:last-child {
+    position: relative;
+}
+
+.replacement-apply-form .vehicle-list-table .radio-label input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .replacement-apply-form .vehicle-list-table .radio-label {
@@ -785,7 +845,7 @@ body {
     font-size: 20px;
 }
 
-.replacement-apply-form .vehicle-list-table input[type="radio"]:checked + .radio-label {
+.replacement-apply-form .vehicle-list-table .radio-label:has(input[type="radio"]:checked) {
     color: #28a745;
 }
 
@@ -889,10 +949,20 @@ body {
     flex-direction: row;
     gap: 8px;
     margin-top: 10px;
+    position: relative;
 }
 
+/* display:none 대신 시각적 숨김 — label for 연결·스크린 리더 인식 유지 */
 .work-type-toggle input[type="radio"] {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .toggle-btn {
@@ -943,10 +1013,19 @@ body {
     flex-direction: row;
     gap: 8px;
     margin-top: 10px;
+    position: relative;
 }
 
 .vehicle-status-toggle input[type="radio"] {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .status-btn {
@@ -1196,7 +1275,7 @@ body {
 .modal-footer .btn {
     flex: 1;
     padding: 12px;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 600;
     border-radius: 8px;
     border: none;
@@ -1505,11 +1584,11 @@ body {
     }
     
     .day-number {
-        font-size: 14px;
+        font-size: 16px;
     }
     
     .work-status {
-        font-size: 14px;
+        font-size: 16px;
         padding: 1px 3px;
     }
     
@@ -1607,7 +1686,7 @@ body {
     }
     
     .date-display-selector {
-        font-size: 16px;
+        font-size: 17px;
         padding: 8px 15px;
         min-width: 260px;
         border: 1px solid #ddd;
@@ -1664,7 +1743,7 @@ body {
     
     .btn {
         padding: 8px 16px;
-        font-size: 14px;
+        font-size: 18px;
     }
     
     .summary {
