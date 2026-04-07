@@ -86,7 +86,8 @@ from utils.google_sheets import (
     update_loaner_vehicle_on_apply,
     reset_loaner_vehicle_on_work_end,
     update_work_cell_note_report,
-    get_today_replacement_display
+    get_today_replacement_display,
+    parse_replacement_vehicle_from_remark,
 )
 import pandas as pd
 
@@ -982,15 +983,23 @@ def work_end_step2():
             # 캐시 무효화 (매출 데이터 업데이트됨)
             sales_data_cache.clear_pattern(f"sales_summary:{employee_id}:{month_name}")
             
-            # 대차 차량으로 근무 종료 시 [대차차량] 시트 반납 처리
-            vehicle_number = step1_data.get('vehicle_number', '')
-            if vehicle_number:
-                reset_loaner_vehicle_on_work_end(vehicle_number, employee_id)
+            # 대차 차량으로 근무 종료 시 [대차차량] 시트는 '대차' 보고가 있는 차량번호 행을 초기화해야 함
+            # (배정 차량 번호는 본인 행 33바1800 등이므로, 대차 시트 행 33바1812와 불일치하면 반납이 누락됨)
+            assigned_vn = (step1_data.get('vehicle_number') or '').strip()
+            notes_text = (step1_data.get('special_notes') or '').strip()
+            loaner_vn = parse_replacement_vehicle_from_remark(notes_text)
+            if not loaner_vn and work_start_info:
+                loaner_vn = parse_replacement_vehicle_from_remark(
+                    (work_start_info.get('special_notes') or work_start_info.get('vehicle_condition') or '')
+                )
+            vehicle_for_loaner_reset = (loaner_vn or assigned_vn).strip()
+            if vehicle_for_loaner_reset:
+                reset_loaner_vehicle_on_work_end(vehicle_for_loaner_reset, employee_id)
             
             # 근무종료 완료 활동 로깅
             user_name = user.get('name', '') if user else ''
-            # lookup_date는 근무준비를 시작한 날짜 (운행일과 동일)
-            print(f"[ACTIVITY] user 근무종료 완료 - 사번: {employee_id}, 이름: {user_name}, 날짜: {year}/{month}/{day}, 차량: {vehicle_number}")
+            log_loaner = f", 대차반납차량: {loaner_vn}" if loaner_vn else ""
+            print(f"[ACTIVITY] user 근무종료 완료 - 사번: {employee_id}, 이름: {user_name}, 날짜: {year}/{month}/{day}, 차량: {assigned_vn}{log_loaner}")
             
             # 세션에서 1단계 데이터 제거
             session.pop('work_end_step1', None)
