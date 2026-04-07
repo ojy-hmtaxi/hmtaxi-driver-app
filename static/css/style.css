@@ -658,7 +658,7 @@ fieldset.form-group legend {
 .summary {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 0px;
     padding: 12px;
     background-color: #f5f6f8;
     border-radius: 4px;
@@ -1601,7 +1601,7 @@ fieldset.form-group legend {
     .summary {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 0px;
         padding: 12px;
         margin-top: 10px;
         margin-bottom: 0;
@@ -1749,7 +1749,7 @@ fieldset.form-group legend {
     .summary {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 0px;
         padding: 12px;
     }
     

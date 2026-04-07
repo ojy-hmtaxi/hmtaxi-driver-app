@@ -976,6 +976,51 @@ def update_loaner_vehicle_on_apply(vehicle_number, employee_id, driver_name, app
         return False
 
 
+def reset_loaner_vehicle_on_work_end(vehicle_number, employee_id):
+    """대차 차량으로 근무 종료 시 [대차차량] 시트 해당 행 초기화.
+    - 대차가능(C열)=O
+    - 대차신청일(D열), 대차사용자(E열), 사번(F열)=빈칸
+    차량번호·사번이 대차 신청 직후 기록과 일치하고 대차가능이 'X'인 행만 갱신한다."""
+    try:
+        worksheet = get_worksheet(LOANER_SHEET_NAME)
+        all_values = worksheet.get_all_values()
+        if not all_values or len(all_values) < 2:
+            return False
+        header = [str(h).strip() for h in all_values[0]]
+        col_idx = {h: i for i, h in enumerate(header)}
+        num_col = col_idx.get('차량번호')
+        sabun_col = col_idx.get('사번')
+        avail_col = col_idx.get('대차가능')
+        if num_col is None or sabun_col is None or avail_col is None:
+            return False
+        vn_norm = str(vehicle_number).strip().replace(' ', '')
+        eid = str(employee_id or '').strip()
+        if not vn_norm or not eid:
+            return False
+        for i, row in enumerate(all_values[1:], start=2):
+            if len(row) <= max(num_col, sabun_col, avail_col):
+                continue
+            row_vn = str(row[num_col]).strip().replace(' ', '')
+            row_eid = str(row[sabun_col]).strip()
+            if row_vn != vn_norm or row_eid != eid:
+                continue
+            cur = str(row[avail_col]).strip().upper()
+            if cur != 'X':
+                continue
+            worksheet.update_cell(i, avail_col + 1, 'O')
+            if '대차신청일' in col_idx:
+                worksheet.update_cell(i, col_idx['대차신청일'] + 1, '')
+            if '대차사용자' in col_idx:
+                worksheet.update_cell(i, col_idx['대차사용자'] + 1, '')
+            if '사번' in col_idx:
+                worksheet.update_cell(i, col_idx['사번'] + 1, '')
+            return True
+        return False
+    except Exception as e:
+        print(f"Error reset_loaner_vehicle_on_work_end: {e}")
+        return False
+
+
 def update_work_cell_note_report(employee_id, month_sheet_name, day, report_value):
     """해당 월·일의 근무 셀 메모에서 '보고사항'만 갱신 (없으면 추가).
     같은 사번이 야간/주간 등 여러 행일 수 있으므로, 해당일 메모에 '운행시작일시'가 있는 행(실제 근무 시작된 행)을 찾아 그 셀만 수정한다."""
