@@ -12,6 +12,13 @@ import os
 
 def _is_sheets_read_quota_error(exc):
     """Google Sheets API 분당 읽기 한도(429 RESOURCE_EXHAUSTED) 여부."""
+    try:
+        if isinstance(exc, gspread.exceptions.APIError):
+            rsp = getattr(exc, 'response', None)
+            if rsp is not None and getattr(rsp, 'status_code', None) == 429:
+                return True
+    except Exception:
+        pass
     msg = str(exc)
     return (
         '429' in msg
@@ -22,27 +29,30 @@ def _is_sheets_read_quota_error(exc):
 
 
 def _sheets_quota_backoff(attempt_index):
-    """429 시 지수 백오프 + 소량 지터."""
-    time.sleep(min(0.45 * (2 ** attempt_index) + random.random() * 0.25, 22.0))
+    """429 시 지수 백오프 + 지터 (분당 한도 회복까지 여유 두기)."""
+    base = min(4.5 * (1.92 ** attempt_index), 58.0)
+    jitter = random.random() * 1.25
+    time.sleep(min(base + jitter, 65.0))
 
 
-def _retry_sheets_operation(operation_fn, attempts=6):
-    """읽기 쿼터 초과 시 짧게 재시도."""
+def _retry_sheets_operation(operation_fn, attempts=None):
+    """읽기 쿼터 초과 시 백오프 재시도 (시도 횟수는 config)."""
+    n = attempts if attempts is not None else config.SHEETS_READ_RETRY_ATTEMPTS
     last_exc = None
-    for attempt in range(attempts):
+    for attempt in range(n):
         try:
             return operation_fn()
         except Exception as e:
             last_exc = e
-            if attempt < attempts - 1 and _is_sheets_read_quota_error(e):
-                print(f"Sheets API 재시도({attempt + 1}/{attempts}): {e}")
+            if attempt < n - 1 and _is_sheets_read_quota_error(e):
+                print(f"Sheets API 429 재시도({attempt + 1}/{n}): {str(e)[:300]}")
                 _sheets_quota_backoff(attempt)
                 continue
             raise
     raise last_exc
 
 
-ACCOUNTS_CACHE_TTL_SEC = 180
+ACCOUNTS_CACHE_TTL_SEC = config.ACCOUNTS_CACHE_SECONDS
 _accounts_cache_lock = threading.Lock()
 _accounts_cache_records = None
 _accounts_cache_ts = 0.0
@@ -81,6 +91,8 @@ def _open_work_spreadsheet_once():
         try:
             return client.open_by_key(config.SPREADSHEET_ID)
         except Exception as e:
+            if _is_sheets_read_quota_error(e):
+                raise
             print(f"Warning: Failed to open spreadsheet by ID {config.SPREADSHEET_ID}: {e}")
     
     try:
@@ -123,6 +135,8 @@ def _open_sales_spreadsheet_once():
         try:
             return client.open_by_key(config.SALES_SPREADSHEET_ID)
         except Exception as e:
+            if _is_sheets_read_quota_error(e):
+                raise
             print(f"Warning: Failed to open sales spreadsheet by ID {config.SALES_SPREADSHEET_ID}: {e}")
     
     try:
@@ -272,16 +286,19 @@ def _rows_to_dict_records(raw_rows):
             rec[key] = '' if val is None or val == '' else str(val).strip()
         if rec.get('사번'):
             records.append(rec)
-        return records
+    return records
 
 
 def get_monthly_work_data(month_sheet_name, spreadsheet=None):
     """월별 근무 데이터 가져오기 (A:AM 범위만 조회, 캘린더·근무표에 충분).
     spreadsheet가 있으면 get_spreadsheet() 재호출 없이 해당 통합문서에서 시트만 연다."""
-    try:
+    def _fetch_values():
         ss = spreadsheet if spreadsheet is not None else get_spreadsheet()
         worksheet = ss.worksheet(month_sheet_name)
-        raw = worksheet.get_values(WORK_DB_READ_RANGE)
+        return worksheet.get_values(WORK_DB_READ_RANGE)
+
+    try:
+        raw = _retry_sheets_operation(_fetch_values)
         if not raw:
             return []
         return _rows_to_dict_records(raw)
@@ -679,7 +696,7 @@ def get_all_months_aggregated_data(
     reference_date=None,
     recent_months=None,
     work_data_cache=None,
-    max_workers=8,
+    max_workers=None,
 ):
     """사용자의 월별 근무 데이터 합산 (근무 이력 차트용).
 
@@ -687,6 +704,7 @@ def get_all_months_aggregated_data(
     - recent_months: 조회할 월 시트 개수(당해, reference 월까지 역으로). None/12 이상이면 1~12월 전부.
     - work_data_cache: 캘린더와 동일 키(work_data:사번:월)로 per-month 리스트 캐시.
     - spreadsheet는 1회만 연 뒤 워커에서 시트만 전환(get_monthly_work_data(..., spreadsheet)).
+    - max_workers: 기본 None이면 config.SHEETS_PARALLEL_MONTH_WORKERS(기본 3)로 병렬 폭 제한.
     """
     ref = reference_date or date.today()
     if recent_months is None:
@@ -696,7 +714,9 @@ def get_all_months_aggregated_data(
         return {}
     spreadsheet = get_spreadsheet()
     all_data = {}
-    workers = min(max(1, int(max_workers)), len(month_names))
+    mw_cfg = getattr(config, 'SHEETS_PARALLEL_MONTH_WORKERS', 3)
+    mw = mw_cfg if max_workers is None else max_workers
+    workers = min(max(1, int(mw)), len(month_names))
     if len(month_names) == 1:
         try:
             mn, agg = _work_history_fetch_one_month(
@@ -960,8 +980,11 @@ def get_user_sales_summary(employee_id, month_sheet_name):
         }
     """
     try:
-        worksheet = get_sales_worksheet(month_sheet_name)
-        all_values = worksheet.get_values(SALES_DB_READ_RANGE)
+        def _fetch_sales_values():
+            worksheet = get_sales_worksheet(month_sheet_name)
+            return worksheet.get_values(SALES_DB_READ_RANGE)
+
+        all_values = _retry_sheets_operation(_fetch_sales_values)
         if not all_values or len(all_values) < 2:
             return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
         

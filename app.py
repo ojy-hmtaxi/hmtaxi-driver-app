@@ -74,12 +74,11 @@ class SimpleCache:
                 del self._cache[key]
                 del self._timestamps[key]
 
-# 전역 캐시 인스턴스 (근무 데이터: 60초, 매출 데이터: 120초)
-# TTL 증가로 API 호출 횟수 감소 (데이터 변경 빈도가 낮으므로 안전)
-work_data_cache = SimpleCache(default_ttl=60)  # 근무 데이터는 60초 캐시
-sales_data_cache = SimpleCache(default_ttl=120)  # 매출 데이터는 120초 캐시
-work_start_info_cache = SimpleCache(default_ttl=60)  # 근무시작 정보(메모) 60초 캐시 → 캘린더 로딩 시 반복 호출 감소
-annual_stats_cache = SimpleCache(default_ttl=180)  # 메인 연간 통계 180초 캐시
+# 전역 캐시 (TTL은 config 환경 변수로 조절 가능 — Sheets 분당 읽기 한도 완화)
+work_data_cache = SimpleCache(default_ttl=config.WORK_DATA_CACHE_SECONDS)
+sales_data_cache = SimpleCache(default_ttl=config.SALES_SUMMARY_CACHE_SECONDS)
+work_start_info_cache = SimpleCache(default_ttl=config.WORK_START_INFO_CACHE_SECONDS)
+annual_stats_cache = SimpleCache(default_ttl=config.ANNUAL_STATS_CACHE_SECONDS)
 notice_cache = SimpleCache(default_ttl=120)  # 공지사항 목록 캐시
 from utils.auth import authenticate_user, change_password, check_default_password
 
@@ -517,7 +516,9 @@ def get_main_yearly_stats(employee_id, reference_date):
     def _month_accident(mn):
         return _to_int_safe((get_user_sales_summary_cached(employee_id, mn) or {}).get('accident_count', 0))
 
-    with ThreadPoolExecutor(max_workers=min(8, len(config.MONTHS))) as ex:
+    with ThreadPoolExecutor(
+        max_workers=min(config.SHEETS_PARALLEL_MONTH_WORKERS, len(config.MONTHS))
+    ) as ex:
         annual_accident_count = sum(ex.map(_month_accident, config.MONTHS))
 
     result = {
@@ -535,12 +536,9 @@ def build_calendar_template_context(employee_id, year, month, include_yearly_sta
     current_date = get_kst_now()
     month_name = config.MONTHS[month - 1]
     
-    # 근무 데이터·매출 요약 병렬 로딩 (캘린더 첫 화면 응답 속도 개선)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_work = executor.submit(get_all_user_work_data_cached, employee_id, month_name)
-        future_sales = executor.submit(get_user_sales_summary_cached, employee_id, month_name)
-        all_work_data = future_work.result()
-        sales_summary = (future_sales.result() or {})
+    # 근무·매출 순차 로딩: 병렬 2동시 호출보다 분당 읽기 스파이크 감소(429 완화)
+    all_work_data = get_all_user_work_data_cached(employee_id, month_name)
+    sales_summary = get_user_sales_summary_cached(employee_id, month_name) or {}
     
     # 첫 번째 행을 기본 데이터로 사용 (기타 정보 표시용)
     work_data = all_work_data[0] if all_work_data and len(all_work_data) > 0 else None
