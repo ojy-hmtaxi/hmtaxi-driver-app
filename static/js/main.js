@@ -17,7 +17,11 @@ const LoadingManager = {
     /** 페이지 이탈 전 오버레이·퍼센트 애니메이션을 이 시간(ms) 이상 유지(JS 타이머가 돌 시간 확보) */
     minimumOverlayVisibleMs: 1000,
     _overlayShownPerfMs: 0,
-    
+    /** setInterval 미실행(WebKit 등) 완충용, 최소 노출 시간 동안 고정 간격으로 퍼센트 강제 갱신 */
+    _burstTimeouts: [],
+    /** WAAPI 타임라인(getComputedTiming.progress) 기반 보조 — 순수 시간만 쓸 때 타이머가 막히는 환경용 */
+    _progressDrivingAnim: null,
+
     /**
      * 초기화
      */
@@ -83,9 +87,28 @@ const LoadingManager = {
             this.isActive = false;
         }, 300);
     },
+
+    /** 인터벌·버스트 타임아웃·WAAPI 드라이버 정리 */
+    _stopProgressDrivers() {
+        if (this.progressTimer !== null) {
+            clearInterval(this.progressTimer);
+            this.progressTimer = null;
+        }
+        if (this._burstTimeouts && this._burstTimeouts.length) {
+            this._burstTimeouts.forEach((t) => clearTimeout(t));
+            this._burstTimeouts = [];
+        }
+        if (this._progressDrivingAnim) {
+            try {
+                this._progressDrivingAnim.cancel();
+            } catch (ignore) { /* noop */ }
+            this._progressDrivingAnim = null;
+        }
+    },
     
     /**
-     * 로딩 스피너 위 퍼센트 0→100 (느낌용). setInterval 로 모바일 전환 시에도 갱신되게 함.
+     * 로딩 스피너 위 퍼센트 0→100 (느낌용).
+     * 모바일 WebKit에서는 setInterval이 합치/지연되기도 해 WAAPI progress + 명시적 setTimeout 버스트를 병행.
      */
     startProgressPercent() {
         this.stopProgressPercent(false);
@@ -100,35 +123,74 @@ const LoadingManager = {
             ? performance.now()
             : Date.now());
 
-        const tick = () => {
-            if (!this.isActive || !this.progressEl) {
-                if (this.progressTimer !== null) {
-                    clearInterval(this.progressTimer);
-                    this.progressTimer = null;
-                }
-                return;
+        const getLinearProgress = () => {
+            const timeP = Math.min(1, Math.max(0, (nowMs() - this.progressStartMs) / this.progressDurationMs));
+            let p = timeP;
+            const anim = this._progressDrivingAnim;
+            if (anim && anim.effect && typeof anim.effect.getComputedTiming === 'function') {
+                try {
+                    const gp = anim.effect.getComputedTiming().progress;
+                    if (gp != null && !Number.isNaN(gp)) {
+                        p = Math.max(p, Math.min(1, Math.max(0, gp)));
+                    }
+                } catch (ignore) { /* timeP only */ }
             }
-            const t = Math.min(1, (nowMs() - this.progressStartMs) / this.progressDurationMs);
-            const pct = Math.min(100, Math.floor(t * 100));
-            this.progressEl.textContent = pct + '%';
+            return p;
+        };
+
+        const applyPct = () => {
+            if (!this.isActive || !this.progressEl) return false;
+            const pct = Math.min(100, Math.floor(getLinearProgress() * 100));
+            const el = this.progressEl;
+            el.textContent = pct + '%';
+            void el.offsetHeight;
             if (pct >= 100 && this.progressTimer !== null) {
                 clearInterval(this.progressTimer);
                 this.progressTimer = null;
             }
+            return pct >= 100;
         };
 
-        tick();
-        this.progressTimer = setInterval(tick, this.progressTickMs);
+        try {
+            if (this.overlay && typeof this.overlay.animate === 'function') {
+                this._progressDrivingAnim = this.overlay.animate(
+                    [{ filter: 'brightness(1)' }, { filter: 'brightness(1.02)' }],
+                    {
+                        duration: this.progressDurationMs,
+                        easing: 'linear',
+                        fill: 'forwards',
+                    },
+                );
+            }
+        } catch (ignore) {
+            this._progressDrivingAnim = null;
+        }
+
+        applyPct();
+
+        const burstStep = Math.max(16, Math.min(40, this.progressTickMs));
+        const burstEnd = typeof this.minimumOverlayVisibleMs === 'number' ? this.minimumOverlayVisibleMs : 1000;
+        this._burstTimeouts = [];
+        this._burstTimeouts.push(setTimeout(() => applyPct(), 0));
+        for (let delay = burstStep; delay <= burstEnd; delay += burstStep) {
+            this._burstTimeouts.push(setTimeout(() => applyPct(), delay));
+        }
+
+        const tickLoop = () => {
+            if (!this.isActive || !this.progressEl) {
+                this._stopProgressDrivers();
+                return;
+            }
+            applyPct();
+        };
+        this.progressTimer = setInterval(tickLoop, this.progressTickMs);
     },
     
     /**
      * @param {boolean} resetText - 요소 텍스트를 0%로 초기화할지
      */
     stopProgressPercent(resetText) {
-        if (this.progressTimer !== null) {
-            clearInterval(this.progressTimer);
-            this.progressTimer = null;
-        }
+        this._stopProgressDrivers();
         if (resetText && this.progressEl) {
             this.progressEl.textContent = '0%';
         }
@@ -138,10 +200,7 @@ const LoadingManager = {
     },
     
     finishProgressPercent() {
-        if (this.progressTimer !== null) {
-            clearInterval(this.progressTimer);
-            this.progressTimer = null;
-        }
+        this._stopProgressDrivers();
         const el = this.progressEl || document.getElementById('loadingProgressPercent');
         if (el) {
             el.textContent = '100%';
