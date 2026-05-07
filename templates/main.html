@@ -63,18 +63,18 @@
     </div>
 
     <p class="main-stats-month-note"> 연간 근태 현황</p>
-    <div class="main-stats-bar">
+    <div class="main-stats-bar" id="main-yearly-stats-bar" aria-busy="true">
         <div class="main-stat">
             <span class="main-stat-label">결근일</span>
-            <span class="main-stat-value">{{ annual_absent_days|default(0) }}일</span>
+            <span class="main-stat-value" id="yearly-absent">…</span>
         </div>
         <div class="main-stat">
             <span class="main-stat-label">근속연차</span>
-            <span class="main-stat-value">{{ annual_leave_remaining|default(0) }} / {{ annual_leave_entitlement|default(0) }}일</span>
+            <span class="main-stat-value" id="yearly-leave">…</span>
         </div>
         <div class="main-stat">
             <span class="main-stat-label">가해사고</span>
-            <span class="main-stat-value">{{ annual_accident_count|default(0) }}건</span>
+            <span class="main-stat-value" id="yearly-accident">…</span>
         </div>
     </div>
     <br>
@@ -137,6 +137,32 @@ document.addEventListener('DOMContentLoaded', function() {
             logoutModal.style.display = 'none';
         }
     });
+
+    (function loadYearlyStats() {
+        var yearlyBar = document.getElementById('main-yearly-stats-bar');
+        var elA = document.getElementById('yearly-absent');
+        var elL = document.getElementById('yearly-leave');
+        var elC = document.getElementById('yearly-accident');
+        if (!yearlyBar || !elA || !elL || !elC) return;
+
+        fetch('{{ url_for("api_main_yearly_stats") }}', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.ok) throw new Error(d.error || 'load failed');
+                elA.textContent = (d.annual_absent_days != null ? d.annual_absent_days : '0') + '일';
+                var ent = d.annual_leave_entitlement != null ? d.annual_leave_entitlement : '0';
+                var rem = d.annual_leave_remaining != null ? d.annual_leave_remaining : '0';
+                elL.textContent = rem + ' / ' + ent + '일';
+                elC.textContent = (d.annual_accident_count != null ? d.annual_accident_count : '0') + '건';
+                yearlyBar.setAttribute('aria-busy', 'false');
+            })
+            .catch(function () {
+                elA.textContent = '—';
+                elL.textContent = '—';
+                elC.textContent = '—';
+                yearlyBar.setAttribute('aria-busy', 'false');
+            });
+    })();
 });
 </script>
 {% endblock %}

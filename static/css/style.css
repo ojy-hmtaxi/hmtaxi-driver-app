@@ -1250,7 +1250,7 @@ a.main-secondary-btn.main-logout-btn:hover {
     border-radius: 8px;
     overflow: hidden;
     background: #f5f5f5;
-    padding: 8px;
+    padding: 0px;
     box-sizing: border-box;
 }
 

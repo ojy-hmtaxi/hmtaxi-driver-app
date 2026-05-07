@@ -8,9 +8,11 @@ const LoadingManager = {
     container: null,
     isActive: false,
     progressEl: null,
-    progressRaf: null,
+    /** 느낌용 진행 표시 — 모바일 네비게이션 구간에서 rAF 대신 setInterval 사용 */
+    progressTimer: null,
+    progressTickMs: 50,
     progressStartMs: 0,
-    /** 0→100% 카운트 표시에 걸리는 시간(ms). 페이지 전환이 빠르면 hide()에서 100%로 마무리 */
+    /** 0→100% 카운트 표시에 걸리는 시간(ms). 실제 전송 진행률은 아님 — hide()에서 100% 마무리 */
     progressDurationMs: 3000,
     
     /**
@@ -40,8 +42,7 @@ const LoadingManager = {
         // 페이지 전환 플래그 설정 (새 페이지에서 슬라이드 인 애니메이션을 위해)
         sessionStorage.setItem('pageTransition', 'true');
         
-        // 즉시 표시 (모바일에서 빠른 페이지 전환 대응)
-        // requestAnimationFrame 제거하고 즉시 표시
+        // 즉시 표시 — 오버레이가 첫 페인트에 도달하도록 리플로우만 유지
         this.overlay.classList.add('show');
         
         // 강제 리플로우로 즉시 렌더링
@@ -78,7 +79,7 @@ const LoadingManager = {
     },
     
     /**
-     * 로딩 스피너 위 퍼센트 0→100 애니메이션
+     * 로딩 스피너 위 퍼센트 0→100 (느낌용). setInterval 로 모바일 전환 시에도 갱신되게 함.
      */
     startProgressPercent() {
         this.stopProgressPercent(false);
@@ -87,31 +88,40 @@ const LoadingManager = {
         this.progressStartMs = (typeof performance !== 'undefined' && performance.now)
             ? performance.now()
             : Date.now();
-        if (this.progressEl) {
-            this.progressEl.textContent = '0%';
-        }
-        const step = () => {
-            if (!this.isActive || !this.progressEl) return;
-            const now = (typeof performance !== 'undefined' && performance.now)
-                ? performance.now()
-                : Date.now();
-            const t = Math.min(1, (now - this.progressStartMs) / this.progressDurationMs);
+        this.progressEl.textContent = '0%';
+
+        const nowMs = () => ((typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now());
+
+        const tick = () => {
+            if (!this.isActive || !this.progressEl) {
+                if (this.progressTimer !== null) {
+                    clearInterval(this.progressTimer);
+                    this.progressTimer = null;
+                }
+                return;
+            }
+            const t = Math.min(1, (nowMs() - this.progressStartMs) / this.progressDurationMs);
             const pct = Math.min(100, Math.floor(t * 100));
             this.progressEl.textContent = pct + '%';
-            if (pct < 100 && this.isActive) {
-                this.progressRaf = requestAnimationFrame(step);
+            if (pct >= 100 && this.progressTimer !== null) {
+                clearInterval(this.progressTimer);
+                this.progressTimer = null;
             }
         };
-        this.progressRaf = requestAnimationFrame(step);
+
+        tick();
+        this.progressTimer = setInterval(tick, this.progressTickMs);
     },
     
     /**
      * @param {boolean} resetText - 요소 텍스트를 0%로 초기화할지
      */
     stopProgressPercent(resetText) {
-        if (this.progressRaf) {
-            cancelAnimationFrame(this.progressRaf);
-            this.progressRaf = null;
+        if (this.progressTimer !== null) {
+            clearInterval(this.progressTimer);
+            this.progressTimer = null;
         }
         if (resetText && this.progressEl) {
             this.progressEl.textContent = '0%';
@@ -122,9 +132,9 @@ const LoadingManager = {
     },
     
     finishProgressPercent() {
-        if (this.progressRaf) {
-            cancelAnimationFrame(this.progressRaf);
-            this.progressRaf = null;
+        if (this.progressTimer !== null) {
+            clearInterval(this.progressTimer);
+            this.progressTimer = null;
         }
         const el = this.progressEl || document.getElementById('loadingProgressPercent');
         if (el) {

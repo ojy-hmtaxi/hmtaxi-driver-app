@@ -53,6 +53,12 @@ MONTHS = ['1월', '2월', '3월', '4월', '5월', '6월',
 # 12(기본) = 1~12월 시트 전부. 6 등으로 두면 최근 6개월치 시트만 API 호출 (속도·쿼터 절약).
 WORK_HISTORY_RECENT_MONTHS = int(os.environ.get('WORK_HISTORY_RECENT_MONTHS', '12'))
 
+# Sheets 재시도/병렬: SHEETS_READ_RETRY_ATTEMPTS, SHEETS_429_BACKOFF_CAP_SEC, SHEETS_PARALLEL_MONTH_WORKERS
+# 메모리 캐시(TTL): WORK_DATA_* , SALES_* , WORK_START_* , ANNUAL_STATS_* , ACCOUNTS_* , NOTICE_CACHE_SECONDS
+# /main 강제 갱신 제한: ALLOW_MAIN_FRESH_QUERY=0 또는 false / no / off
+# SQLite 연간 스냅샷: YEARLY_STATS_SNAPSHOT_DB_PATH , YEARLY_STATS_SNAPSHOT_TTL_SEC
+# 선택 배경 갱신: YEARLY_STATS_BG_REFRESH_ENABLED , YEARLY_STATS_BG_REFRESH_INTERVAL_SEC
+
 # Sheets 읽기 429 완화: 재시도·병렬·앱측 데이터 캐시 (초)
 # 재시도/sleep 합이 Gunicorn timeout(보통 30s)보다 크면 WORKER TIMEOUT 발생 → backoff 상한 필수.
 SHEETS_READ_RETRY_ATTEMPTS = max(2, min(15, int(os.environ.get('SHEETS_READ_RETRY_ATTEMPTS', '5'))))
@@ -63,4 +69,20 @@ SALES_SUMMARY_CACHE_SECONDS = max(30, min(3600, int(os.environ.get('SALES_SUMMAR
 WORK_START_INFO_CACHE_SECONDS = max(30, min(3600, int(os.environ.get('WORK_START_INFO_CACHE_SECONDS', '180'))))
 ANNUAL_STATS_CACHE_SECONDS = max(60, min(7200, int(os.environ.get('ANNUAL_STATS_CACHE_SECONDS', '300'))))
 ACCOUNTS_CACHE_SECONDS = max(60, min(7200, int(os.environ.get('ACCOUNTS_CACHE_SECONDS', '300'))))
+
+NOTICE_CACHE_SECONDS = max(30, min(7200, int(os.environ.get('NOTICE_CACHE_SECONDS', '120'))))
+
+_allow_main_fresh = (os.environ.get('ALLOW_MAIN_FRESH_QUERY') or '1').strip().lower()
+ALLOW_MAIN_FRESH_QUERY = _allow_main_fresh not in ('0', 'false', 'no', 'off')
+
+_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+_default_yearly_snap_db = os.path.join(_PROJECT_ROOT, 'instance', 'yearly_stats.sqlite')
+YEARLY_STATS_SNAPSHOT_DB_PATH = (os.environ.get('YEARLY_STATS_SNAPSHOT_DB_PATH') or _default_yearly_snap_db).strip()
+# 0 이면 스냅샷 기능 끔(항상 무거운 항목도 Sheets 재계산). 메모리(ANNUAL_STATS_CACHE_SECONDS) TTL이 여기 TTL보다
+# 크면 결과가 디스크 갱신보다 오래 머물 수 있다.
+YEARLY_STATS_SNAPSHOT_TTL_SEC = max(0, min(86400 * 30, int(os.environ.get('YEARLY_STATS_SNAPSHOT_TTL_SEC', '21600'))))
+
+_bg_yearly = (os.environ.get('YEARLY_STATS_BG_REFRESH_ENABLED') or '0').strip().lower()
+YEARLY_STATS_BG_REFRESH_ENABLED = _bg_yearly in ('1', 'true', 'yes', 'on')
+YEARLY_STATS_BG_REFRESH_INTERVAL_SEC = max(120, min(86400, int(os.environ.get('YEARLY_STATS_BG_REFRESH_INTERVAL_SEC', '600'))))
 

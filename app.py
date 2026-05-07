@@ -79,15 +79,17 @@ work_data_cache = SimpleCache(default_ttl=config.WORK_DATA_CACHE_SECONDS)
 sales_data_cache = SimpleCache(default_ttl=config.SALES_SUMMARY_CACHE_SECONDS)
 work_start_info_cache = SimpleCache(default_ttl=config.WORK_START_INFO_CACHE_SECONDS)
 annual_stats_cache = SimpleCache(default_ttl=config.ANNUAL_STATS_CACHE_SECONDS)
-notice_cache = SimpleCache(default_ttl=120)  # 공지사항 목록 캐시
+notice_cache = SimpleCache(default_ttl=config.NOTICE_CACHE_SECONDS)
 from utils.auth import authenticate_user, change_password, check_default_password
+from utils import yearly_stats_snapshot
 
 
 def invalidate_main_dashboard_stats_caches(employee_id):
-    """메인 통계용 메모리 캐시(work/sales/연간) 무효화.
+    """메인 통계용 메모리 캐시(work/sales/연간) 및 연간 무거운 필드 SQLite 스냅샷 무효화.
 
     매 요청마다 호출하면 Sheets 읽기가 폭증해 분당 한도(429)에 걸리기 쉽다.
-    기본 메인 진입에서는 호출하지 않고, 필요 시 `/main?fresh=1` 로만 실행한다."""
+    기본 진입에서는 호출하지 않는다. `ALLOW_MAIN_FRESH_QUERY`(기본 허용)가 켜져 있을 때만
+    `/main?fresh=1` 에서 실행된다."""
     if employee_id is None:
         return
     eid = str(employee_id).strip()
@@ -96,6 +98,7 @@ def invalidate_main_dashboard_stats_caches(employee_id):
     work_data_cache.clear_pattern(f'work_data:{eid}:')
     sales_data_cache.clear_pattern(f'sales_summary:{eid}:')
     annual_stats_cache.clear_pattern(f'main_yearly:{eid}:')
+    yearly_stats_snapshot.invalidate_employee(eid, config.YEARLY_STATS_SNAPSHOT_DB_PATH)
 
 
 def get_google_api_credentials():
@@ -237,9 +240,10 @@ def get_notice_file_meta(file_id):
         'posted_date': parsed['posted_date'],
     }
 from utils.google_sheets import (
-    get_user_work_data, 
+    get_accounts_data,
+    get_user_work_data,
     get_all_user_work_data,
-    update_work_status, 
+    update_work_status,
     get_all_months_data,
     get_all_months_aggregated_data,
     get_user_by_id,
@@ -484,26 +488,8 @@ def _get_sheet_metric(record, key):
     return _to_int_safe(record.get(key, 0))
 
 
-def get_main_yearly_stats(employee_id, reference_date):
-    """메인 연간 통계(결근·연차·가해사고) 계산.
-    - 1~12월 대상
-    - 월별 캐시(work_data/sales_summary)를 재사용
-    - 결과 자체도 단기 캐시하여 메인 재진입 비용 최소화"""
-    cache_key = f"main_yearly:{employee_id}:{reference_date.year}"
-    cached = annual_stats_cache.get(cache_key)
-    user_rec = get_user_by_id(employee_id)
-    entitlement = get_user_annual_leave_entitlement(user_rec)
-    used_approved = sum_approved_leave_days_for_employee(employee_id)
-    remaining_leave_days = max(0, entitlement - used_approved)
-    if cached is not None:
-        cached = dict(cached)
-        cached.update({
-            'annual_leave_entitlement': entitlement,
-            'annual_leave_remaining': remaining_leave_days,
-        })
-        return cached
-
-    # 연간 결근일수: 기존 월별 합산 함수(병렬 + 시트 1회 open + per-month 캐시) 재사용
+def _compute_heavy_yearly_totals(employee_id, reference_date):
+    """Sheets 호출 부담이 큰 두 지표만 계산해 (결근합, 가해사고 합)."""
     aggregated = get_all_months_aggregated_data(
         employee_id,
         reference_date=reference_date,
@@ -511,25 +497,122 @@ def get_main_yearly_stats(employee_id, reference_date):
         work_data_cache=work_data_cache,
     ) or {}
     annual_absent_days = sum(_get_sheet_metric((v or {}), '결근일') for v in aggregated.values())
+    annual_accident_count = 0
+    for mn in config.MONTHS:
+        annual_accident_count += _to_int_safe(
+            (get_user_sales_summary_cached(employee_id, mn) or {}).get('accident_count', 0)
+        )
+    return annual_absent_days, annual_accident_count
 
-    # 연간 가해사고: 월별 매출 요약 캐시를 병렬 수집 후 합산
-    def _month_accident(mn):
-        return _to_int_safe((get_user_sales_summary_cached(employee_id, mn) or {}).get('accident_count', 0))
 
-    with ThreadPoolExecutor(
-        max_workers=min(config.SHEETS_PARALLEL_MONTH_WORKERS, len(config.MONTHS))
-    ) as ex:
-        annual_accident_count = sum(ex.map(_month_accident, config.MONTHS))
-
-    result = {
-        'annual_absent_days': annual_absent_days,
-        'annual_accident_count': annual_accident_count,
+def get_main_yearly_stats(employee_id, reference_date):
+    """메인 연간 통계(결근·연차·가해사고) 계산.
+    - 무거운 합계는 선택 시 SQLite 스냅샷 TTL 동안 재사용
+    - 연차 총액/잔여는 매 요청 시 시트 로직 반영
+    - 메모리 캐시(ANNUAL_STATS_CACHE_SECONDS)로 재진입 비용 최소화"""
+    cache_key = f'main_yearly:{employee_id}:{reference_date.year}'
+    cached = annual_stats_cache.get(cache_key)
+    user_rec = get_user_by_id(employee_id)
+    entitlement = get_user_annual_leave_entitlement(user_rec)
+    used_approved = sum_approved_leave_days_for_employee(employee_id)
+    remaining_leave_days = max(0, entitlement - used_approved)
+    refresh_leave = {
         'annual_leave_entitlement': entitlement,
         'annual_leave_remaining': remaining_leave_days,
+    }
+    if cached is not None:
+        out = dict(cached)
+        out.update(refresh_leave)
+        return out
+
+    heavy = None
+    if config.YEARLY_STATS_SNAPSHOT_TTL_SEC > 0:
+        heavy = yearly_stats_snapshot.get_heavy(
+            employee_id,
+            reference_date.year,
+            config.YEARLY_STATS_SNAPSHOT_TTL_SEC,
+            config.YEARLY_STATS_SNAPSHOT_DB_PATH,
+        )
+    if heavy:
+        result = dict(heavy)
+        result.update(refresh_leave)
+        annual_stats_cache.set(cache_key, result)
+        return result
+
+    absent, accidents = _compute_heavy_yearly_totals(employee_id, reference_date)
+    if config.YEARLY_STATS_SNAPSHOT_TTL_SEC > 0:
+        yearly_stats_snapshot.put_heavy(
+            employee_id,
+            reference_date.year,
+            absent,
+            accidents,
+            config.YEARLY_STATS_SNAPSHOT_DB_PATH,
+        )
+
+    result = {
+        'annual_absent_days': absent,
+        'annual_accident_count': accidents,
+        **refresh_leave,
     }
     annual_stats_cache.set(cache_key, result)
     return result
 
+
+def refresh_yearly_heavy_snapshot_background(employee_id, reference_date):
+    """배경 스레드 등에서 무거운 연간 두 지표만 재계산·스냅샷 저장. 실패만 로깅."""
+    eid = str(employee_id or '').strip()
+    if not eid:
+        return
+    try:
+        absent, accidents = _compute_heavy_yearly_totals(eid, reference_date)
+        if config.YEARLY_STATS_SNAPSHOT_TTL_SEC > 0:
+            yearly_stats_snapshot.put_heavy(
+                eid,
+                reference_date.year,
+                absent,
+                accidents,
+                config.YEARLY_STATS_SNAPSHOT_DB_PATH,
+            )
+        annual_stats_cache.clear_pattern(f'main_yearly:{eid}:')
+    except Exception as ex:
+        print(f'refresh_yearly_heavy_snapshot_background({eid}): {ex}')
+
+
+yearly_bg_rotate_index = 0
+
+
+def _yearly_stats_background_tick(app_instance):
+    global yearly_bg_rotate_index
+    try:
+        with app_instance.app_context():
+            rows = get_accounts_data()
+            eids = []
+            for r in rows or []:
+                eid = str(r.get('employee_id') or '').strip()
+                if eid:
+                    eids.append(eid)
+            if not eids:
+                return
+            idx = yearly_bg_rotate_index % len(eids)
+            yearly_bg_rotate_index = idx + 1
+            refresh_yearly_heavy_snapshot_background(eids[idx], get_kst_now().date())
+    except Exception as ex:
+        print(f'_yearly_stats_background_tick: {ex}')
+
+
+def start_yearly_stats_background_if_enabled(app_instance):
+    if not getattr(config, 'YEARLY_STATS_BG_REFRESH_ENABLED', False):
+        return
+    if not getattr(config, 'YEARLY_STATS_SNAPSHOT_TTL_SEC', 0):
+        print('YEARLY_STATS_BG_REFRESH_ENABLED 무시됨 — YEARLY_STATS_SNAPSHOT_TTL_SEC 가 0 입니다.')
+        return
+
+    def loop():
+        while True:
+            time.sleep(config.YEARLY_STATS_BG_REFRESH_INTERVAL_SEC)
+            _yearly_stats_background_tick(app_instance)
+
+    threading.Thread(target=loop, daemon=True, name='yearly-heavy-snapshot-bg').start()
 
 def build_calendar_template_context(employee_id, year, month, include_yearly_stats=False):
     """캘린더 뷰와 메인 대시보드에서 공통으로 사용하는 템플릿 컨텍스트."""
@@ -834,12 +917,43 @@ def calendar_view():
 def main_dashboard():
     """메인 대시보드 (로그인 후 진입 화면)"""
     employee_id = session.get('employee_id')
-    # 시트 수정 직후 통계를 즉시 맞추려면 /main?fresh=1 (읽기 호출 증가·429 주의)
+    # 시트 수정 직후: /main?fresh=1 (Sheets 재조회·429 증가) — 필요할 때만, 운영에서 막으면 ALLOW_MAIN_FRESH_QUERY=0
     if request.args.get('fresh') == '1':
-        invalidate_main_dashboard_stats_caches(employee_id)
+        if getattr(config, 'ALLOW_MAIN_FRESH_QUERY', True):
+            invalidate_main_dashboard_stats_caches(employee_id)
+        else:
+            flash(
+                '`/main?fresh=1`(캐시 강제 갱신)은 비활성화되어 있습니다. '
+                'ALLOW_MAIN_FRESH_QUERY=1(또는 환경 변수 제거) 후 재시작하세요.',
+                'warning',
+            )
     cd = get_kst_now()
-    ctx = build_calendar_template_context(employee_id, cd.year, cd.month, include_yearly_stats=True)
+    # 연간 통계는 별도 API로 지연 로드 → 로그인 직후 분당 Sheets 읽기 폭증·429 완화
+    ctx = build_calendar_template_context(employee_id, cd.year, cd.month, include_yearly_stats=False)
+    ctx['yearly_stats_deferred'] = True
     return render_template('main.html', **ctx)
+
+
+@app.route('/api/main-yearly-stats')
+@require_login
+def api_main_yearly_stats():
+    """메인 '연간 근태 현황' 블록용 JSON (첫 화면 이후 로드)."""
+    employee_id = session.get('employee_id')
+    if not employee_id:
+        return jsonify({'ok': False, 'error': 'no_session'}), 401
+    try:
+        data = get_main_yearly_stats(employee_id, get_kst_now().date())
+        payload = {
+            'ok': True,
+            'annual_absent_days': data.get('annual_absent_days', 0),
+            'annual_accident_count': data.get('annual_accident_count', 0),
+            'annual_leave_entitlement': data.get('annual_leave_entitlement', 0),
+            'annual_leave_remaining': data.get('annual_leave_remaining', 0),
+        }
+        return jsonify(payload)
+    except Exception as e:
+        print(f'api_main_yearly_stats: {e}')
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @app.route('/notice')
@@ -1624,6 +1738,8 @@ def api_update_work_status(day):
         return jsonify({'success': True, 'message': '근무시작이 기록되었습니다.'})
     else:
         return jsonify({'success': False, 'message': '근무시작 기록에 실패했습니다.'}), 400
+
+start_yearly_stats_background_if_enabled(app)
 
 if __name__ == '__main__':
     # Cloudtype.io 등 클라우드 환경에서는 PORT 환경 변수 사용
