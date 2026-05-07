@@ -1,4 +1,16 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response, abort
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    flash,
+    jsonify,
+    Response,
+    abort,
+    current_app,
+)
 from datetime import datetime, date, timedelta, timezone
 from zoneinfo import ZoneInfo
 import calendar
@@ -250,6 +262,7 @@ from utils.google_sheets import (
     add_sales_record,
     get_today_work_start_info,
     get_user_sales_summary,
+    prefetch_user_sales_summaries_batch,
     get_loaner_vehicles,
     update_loaner_vehicle_on_apply,
     reset_loaner_vehicle_on_work_end,
@@ -497,6 +510,7 @@ def _compute_heavy_yearly_totals(employee_id, reference_date):
         work_data_cache=work_data_cache,
     ) or {}
     annual_absent_days = sum(_get_sheet_metric((v or {}), '결근일') for v in aggregated.values())
+    prefetch_user_sales_summaries_batch(employee_id, list(config.MONTHS), sales_data_cache)
     annual_accident_count = 0
     for mn in config.MONTHS:
         annual_accident_count += _to_int_safe(
@@ -505,11 +519,43 @@ def _compute_heavy_yearly_totals(employee_id, reference_date):
     return annual_absent_days, annual_accident_count
 
 
-def get_main_yearly_stats(employee_id, reference_date):
+_yearly_swr_refresh_lock = threading.Lock()
+_yearly_swr_refresh_inflight = set()
+
+
+def _schedule_yearly_heavy_refresh(app_obj, employee_id, reference_year):
+    """stale 무거운 스냅샷 백그라운드 재계산(동일 사번·연 중복 시작 방지)."""
+    eid = str(employee_id or '').strip()
+    if not eid:
+        return
+    k = (eid, int(reference_year))
+
+    def run():
+        try:
+            rd = get_kst_now().date()
+            if rd.year != reference_year:
+                rd = date(int(reference_year), 12, 31)
+            with app_obj.app_context():
+                refresh_yearly_heavy_snapshot_background(eid, rd)
+        except Exception as ex:
+            print(f'_schedule_yearly_heavy_refresh thread: {ex}')
+        finally:
+            with _yearly_swr_refresh_lock:
+                _yearly_swr_refresh_inflight.discard(k)
+
+    with _yearly_swr_refresh_lock:
+        if k in _yearly_swr_refresh_inflight:
+            return
+        _yearly_swr_refresh_inflight.add(k)
+    t = threading.Thread(target=run, daemon=True, name=f'yearly-swr-{k[0]}-{k[1]}')
+    t.start()
+
+
+def get_main_yearly_stats(employee_id, reference_date, response_meta=None, allow_stale_snapshot=True):
     """메인 연간 통계(결근·연차·가해사고) 계산.
-    - 무거운 합계는 선택 시 SQLite 스냅샷 TTL 동안 재사용
-    - 연차 총액/잔여는 매 요청 시 시트 로직 반영
-    - 메모리 캐시(ANNUAL_STATS_CACHE_SECONDS)로 재진입 비용 최소화"""
+    - allow_stale_snapshot=True(API): 디스크 스냅샷 TTL 만료 행도 먼저 반환(SWR)·백그라운드 갱신 신호 가능
+    - allow_stale_snapshot=False(캘린더 등): 만료 행 무시하고 TTL 내 스냅샷 또는 Sheets 계산만
+    - 연차 필드는 매 요청 시 시트 기준으로 반영"""
     cache_key = f'main_yearly:{employee_id}:{reference_date.year}'
     cached = annual_stats_cache.get(cache_key)
     user_rec = get_user_by_id(employee_id)
@@ -523,30 +569,60 @@ def get_main_yearly_stats(employee_id, reference_date):
     if cached is not None:
         out = dict(cached)
         out.update(refresh_leave)
+        if response_meta is not None:
+            response_meta['heavy_stale'] = False
+            response_meta['heavy_source'] = 'memory_cache'
+            response_meta['revalidate_recommended'] = False
         return out
 
-    heavy = None
-    if config.YEARLY_STATS_SNAPSHOT_TTL_SEC > 0:
+    snap_path = getattr(config, 'YEARLY_STATS_SNAPSHOT_DB_PATH', '') or ''
+    ttl_cfg = int(getattr(config, 'YEARLY_STATS_SNAPSHOT_TTL_SEC', 0) or 0)
+
+    if allow_stale_snapshot and snap_path:
+        peek = yearly_stats_snapshot.peek_heavy(
+            employee_id,
+            reference_date.year,
+            ttl_cfg if ttl_cfg > 0 else 0,
+            snap_path,
+        )
+        if peek:
+            heavy, stale_by_ttl = peek
+            result = dict(heavy)
+            result.update(refresh_leave)
+            # TTL 만료(stale)로 내려준 경우 연간 블록을 메모리 캐시에 넣지 않음 → 이후 패치 요청에서 DB 재확인
+            if not stale_by_ttl:
+                annual_stats_cache.set(cache_key, result)
+            if response_meta is not None:
+                response_meta['heavy_stale'] = bool(stale_by_ttl)
+                response_meta['heavy_source'] = 'snapshot'
+                response_meta['revalidate_recommended'] = bool(stale_by_ttl)
+            return result
+
+    if not allow_stale_snapshot and ttl_cfg > 0 and snap_path:
         heavy = yearly_stats_snapshot.get_heavy(
             employee_id,
             reference_date.year,
-            config.YEARLY_STATS_SNAPSHOT_TTL_SEC,
-            config.YEARLY_STATS_SNAPSHOT_DB_PATH,
+            ttl_cfg,
+            snap_path,
         )
-    if heavy:
-        result = dict(heavy)
-        result.update(refresh_leave)
-        annual_stats_cache.set(cache_key, result)
-        return result
+        if heavy:
+            result = dict(heavy)
+            result.update(refresh_leave)
+            annual_stats_cache.set(cache_key, result)
+            if response_meta is not None:
+                response_meta['heavy_stale'] = False
+                response_meta['heavy_source'] = 'snapshot'
+                response_meta['revalidate_recommended'] = False
+            return result
 
     absent, accidents = _compute_heavy_yearly_totals(employee_id, reference_date)
-    if config.YEARLY_STATS_SNAPSHOT_TTL_SEC > 0:
+    if ttl_cfg > 0 and snap_path:
         yearly_stats_snapshot.put_heavy(
             employee_id,
             reference_date.year,
             absent,
             accidents,
-            config.YEARLY_STATS_SNAPSHOT_DB_PATH,
+            snap_path,
         )
 
     result = {
@@ -555,6 +631,10 @@ def get_main_yearly_stats(employee_id, reference_date):
         **refresh_leave,
     }
     annual_stats_cache.set(cache_key, result)
+    if response_meta is not None:
+        response_meta['heavy_stale'] = False
+        response_meta['heavy_source'] = 'live'
+        response_meta['revalidate_recommended'] = False
     return result
 
 
@@ -882,7 +962,11 @@ def build_calendar_template_context(employee_id, year, month, include_yearly_sta
     }
 
     if include_yearly_stats:
-        yearly = get_main_yearly_stats(employee_id, current_date.date())
+        yearly = get_main_yearly_stats(
+            employee_id,
+            current_date.date(),
+            allow_stale_snapshot=False,
+        )
         ctx.update(yearly)
 
     return ctx
@@ -937,19 +1021,33 @@ def main_dashboard():
 @app.route('/api/main-yearly-stats')
 @require_login
 def api_main_yearly_stats():
-    """메인 '연간 근태 현황' 블록용 JSON (첫 화면 이후 로드)."""
+    """메인 '연간 근태 현황' 블록용 JSON. stale 스냅샷 즉시 + 백그라운드 재검증(SWR)."""
     employee_id = session.get('employee_id')
     if not employee_id:
         return jsonify({'ok': False, 'error': 'no_session'}), 401
+    follow_poll = request.args.get('follow') == 'up'
     try:
-        data = get_main_yearly_stats(employee_id, get_kst_now().date())
+        ref = get_kst_now().date()
+        meta = {}
+        data = get_main_yearly_stats(
+            employee_id,
+            ref,
+            response_meta=meta,
+            allow_stale_snapshot=True,
+        )
         payload = {
             'ok': True,
             'annual_absent_days': data.get('annual_absent_days', 0),
             'annual_accident_count': data.get('annual_accident_count', 0),
             'annual_leave_entitlement': data.get('annual_leave_entitlement', 0),
             'annual_leave_remaining': data.get('annual_leave_remaining', 0),
+            'heavy_stale': bool(meta.get('heavy_stale')),
+            'heavy_source': meta.get('heavy_source'),
+            'revalidate_suggested': bool(meta.get('revalidate_recommended')) and not follow_poll,
+            'revalidate_after_ms': int(getattr(config, 'YEARLY_SWR_RECHECK_MS', 2600)),
         }
+        if meta.get('revalidate_recommended') and not follow_poll:
+            _schedule_yearly_heavy_refresh(current_app._get_current_object(), employee_id, ref.year)
         return jsonify(payload)
     except Exception as e:
         print(f'api_main_yearly_stats: {e}')

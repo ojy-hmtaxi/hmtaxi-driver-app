@@ -2,16 +2,23 @@ import re
 import random
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 import gspread
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 import config
 import os
 
 
 def _is_sheets_read_quota_error(exc):
     """Google Sheets API 분당 읽기 한도(429 RESOURCE_EXHAUSTED) 여부."""
+    try:
+        if isinstance(exc, HttpError):
+            if getattr(exc.resp, 'status', None) == 429:
+                return True
+    except Exception:
+        pass
     try:
         if isinstance(exc, gspread.exceptions.APIError):
             rsp = getattr(exc, 'response', None)
@@ -58,29 +65,65 @@ _accounts_cache_records = None
 _accounts_cache_ts = 0.0
 
 
+def _service_account_credentials():
+    """gspread·Sheets v4 discovery 공용 서비스 계정 Credentials."""
+    credentials_dict = config.get_google_credentials()
+    if credentials_dict:
+        return Credentials.from_service_account_info(credentials_dict, scopes=config.SCOPES)
+    if not os.path.exists(config.CREDENTIALS_FILE):
+        raise FileNotFoundError(
+            f"credentials.json 파일을 찾을 수 없습니다. ({config.CREDENTIALS_FILE})"
+        )
+    return Credentials.from_service_account_file(config.CREDENTIALS_FILE, scopes=config.SCOPES)
+
+
+_sheets_v4_lock = threading.Lock()
+_sheets_v4_service = None
+
+
+def _get_sheets_v4_service():
+    """Sheets API v4 REST (values.batchGet 등)."""
+    global _sheets_v4_service
+    with _sheets_v4_lock:
+        if _sheets_v4_service is None:
+            _sheets_v4_service = build(
+                'sheets', 'v4', credentials=_service_account_credentials(), cache_discovery=False
+            )
+        return _sheets_v4_service
+
+
+def _sheet_title_to_a1_range(sheet_title, cell_range):
+    """시트 제목에 특수문자·숫자 시작이 있어도 안전한 A1 표기."""
+    t = str(sheet_title).replace("'", "''")
+    return "'" + t + "'!" + cell_range
+
+
+def _sheet_name_from_batch_range(api_range_str):
+    """batchGet 응답 range에서 시트 이름만 추출 (예: '1월'!A:AM → 1월)."""
+    if not api_range_str or '!' not in api_range_str:
+        return ''
+    part = api_range_str.split('!', 1)[0].strip()
+    if part.startswith("'") and len(part) >= 2 and part.endswith("'"):
+        return part[1:-1].replace("''", "'")
+    return part
+
+
+def _sheet_values_batch_get(spreadsheet_id, ranges_a1):
+    """values.batchGet — ranges_a1를 한 번에 요청(읽기 호출 1회)."""
+    if not ranges_a1:
+        return {'valueRanges': []}
+
+    def _call():
+        svc = _get_sheets_v4_service()
+        req = svc.spreadsheets().values().batchGet(spreadsheetId=spreadsheet_id, ranges=ranges_a1)
+        return req.execute()
+
+    return _retry_sheets_operation(_call)
+
+
 def get_google_sheets_client():
     """Google Sheets API 클라이언트 생성"""
-    # 환경 변수에서 인증 정보 가져오기 (Cloudtype.io 등 클라우드 배포용)
-    credentials_dict = config.get_google_credentials()
-
-    if credentials_dict:
-        creds = Credentials.from_service_account_info(
-            credentials_dict,
-            scopes=config.SCOPES,
-        )
-    else:
-        if not os.path.exists(config.CREDENTIALS_FILE):
-            raise FileNotFoundError(
-                f"credentials.json 파일을 찾을 수 없습니다.\n"
-                f"로컬 개발 환경에서는 {config.CREDENTIALS_FILE} 파일이 필요합니다.\n"
-                f"클라우드 배포 환경에서는 GOOGLE_CREDENTIALS 환경 변수에 서비스 계정 JSON 전체 문자열을 설정하세요."
-            )
-        creds = Credentials.from_service_account_file(
-            config.CREDENTIALS_FILE,
-            scopes=config.SCOPES,
-        )
-
-    client = gspread.authorize(creds)
+    client = gspread.authorize(_service_account_credentials())
     return client
 
 def _open_work_spreadsheet_once():
@@ -691,6 +734,20 @@ def _work_history_fetch_one_month(employee_id, month_name, spreadsheet, work_dat
     return month_name, _aggregate_user_month_records(user_list)
 
 
+def _aggregate_work_month_from_sheet_raw(month_name, raw_values, employee_id, work_data_cache):
+    """batchGet 결과 2차원 배열 한 시트 분 → 집계·워크 캐시 반영."""
+    cache_key = f"work_data:{employee_id}:{month_name}"
+    records = _rows_to_dict_records(raw_values or [])
+    user_records = [
+        r for r in records
+        if str(r.get('사번', '')).strip() == str(employee_id).strip()
+    ]
+    user_list = user_records if user_records else None
+    if work_data_cache is not None and user_list is not None:
+        work_data_cache.set(cache_key, user_list)
+    return month_name, _aggregate_user_month_records(user_list)
+
+
 def get_all_months_aggregated_data(
     employee_id,
     reference_date=None,
@@ -700,11 +757,8 @@ def get_all_months_aggregated_data(
 ):
     """사용자의 월별 근무 데이터 합산 (근무 이력 차트용).
 
-    - reference_date: 기준일(당해 연도·월). 기본 오늘(서버 로컬 date; 호출부에서 KST 넘기 권장).
-    - recent_months: 조회할 월 시트 개수(당해, reference 월까지 역으로). None/12 이상이면 1~12월 전부.
-    - work_data_cache: 캘린더와 동일 키(work_data:사번:월)로 per-month 리스트 캐시.
-    - spreadsheet는 1회만 연 뒤 워커에서 시트만 전환(get_monthly_work_data(..., spreadsheet)).
-    - max_workers: 기본 None이면 config.SHEETS_PARALLEL_MONTH_WORKERS(기본 3)로 병렬 폭 제한.
+    미캐시 월은 Sheets API ``values.batchGet`` 으로 한 통합문서당 읽기 호출 횟수를 줄인다(구간당 최대 요청 크기까지 묶음).
+    max_workers 인자는 하위 호환용으로 무시된다.
     """
     ref = reference_date or date.today()
     if recent_months is None:
@@ -712,35 +766,55 @@ def get_all_months_aggregated_data(
     month_names = work_history_month_sheet_names(ref, recent_months)
     if not month_names:
         return {}
-    spreadsheet = get_spreadsheet()
+
     all_data = {}
-    mw_cfg = getattr(config, 'SHEETS_PARALLEL_MONTH_WORKERS', 3)
-    mw = mw_cfg if max_workers is None else max_workers
-    workers = min(max(1, int(mw)), len(month_names))
-    if len(month_names) == 1:
-        try:
-            mn, agg = _work_history_fetch_one_month(
-                employee_id, month_names[0], spreadsheet, work_data_cache
-            )
-            if agg:
-                all_data[mn] = agg
-        except Exception as e:
-            print(f"Error in work history month fetch ({month_names[0]}): {e}")
+    for mn in month_names:
+        ck = f"work_data:{employee_id}:{mn}"
+        if work_data_cache is not None:
+            cached = work_data_cache.get(ck)
+            if cached is not None:
+                ac = _aggregate_user_month_records(cached)
+                if ac:
+                    all_data[mn] = ac
+
+    missing = [mn for mn in month_names if mn not in all_data]
+    if not missing:
         return all_data
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [
-            executor.submit(
-                _work_history_fetch_one_month, employee_id, mn, spreadsheet, work_data_cache
-            )
-            for mn in month_names
-        ]
-        for fut in as_completed(futures):
-            try:
-                mn, agg = fut.result()
-                if agg:
-                    all_data[mn] = agg
-            except Exception as e:
-                print(f"Error in work history month fetch: {e}")
+
+    spreadsheet = get_spreadsheet()
+    sid = spreadsheet.id
+    BATCH = getattr(config, 'SHEETS_WORK_BATCH_CHUNK', 90)
+    BATCH = max(1, min(200, int(BATCH)))
+
+    for off in range(0, len(missing), BATCH):
+        chunk = missing[off : off + BATCH]
+        ranges_a1 = [_sheet_title_to_a1_range(mn, WORK_DB_READ_RANGE) for mn in chunk]
+        try:
+            resp = _sheet_values_batch_get(sid, ranges_a1)
+        except Exception as ex:
+            print(f'work DB batchGet 실패(chunk {off}-{off + len(chunk)}): {str(ex)[:400]}')
+            resp = {}
+
+        raw_by_sheet = {}
+        for vr in (resp.get('valueRanges') or []):
+            name = _sheet_name_from_batch_range(vr.get('range', '') or '')
+            if name:
+                raw_by_sheet[name] = vr.get('values')
+
+        for mn in chunk:
+            raw = raw_by_sheet.get(mn)
+            if raw is None:
+                try:
+                    m2, agg = _work_history_fetch_one_month(employee_id, mn, spreadsheet, work_data_cache)
+                    if agg:
+                        all_data[m2] = agg
+                except Exception as ex:
+                    print(f'work 월별 폴백 실패 ({mn}): {ex}')
+                continue
+            m2, agg = _aggregate_work_month_from_sheet_raw(mn, raw, employee_id, work_data_cache)
+            if agg:
+                all_data[m2] = agg
+
     return all_data
 
 def get_today_work_start_info(employee_id, month_sheet_name, day):
@@ -963,6 +1037,68 @@ def _normalize_sales_operation_date(operation_date):
     return s
 
 
+def _parse_sales_summary_from_values(all_values, employee_id):
+    """매출 시트 A:N 원시 행들에서 사번 한 명 요약 추출."""
+    if not all_values or len(all_values) < 2:
+        return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
+    header = [str(h).strip() for h in all_values[0]]
+    try:
+        employee_id_col_idx = header.index('사번')
+        cash_fare_col_idx = header.index('현금운임')
+        card_fare_col_idx = header.index('카드운임')
+        fuel_cost_col_idx = header.index('연료비')
+    except ValueError as e:
+        print(f"Error: Required column not found in sales sheet: {e}")
+        return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
+    accident_col_idx = header.index('사고유무') if '사고유무' in header else None
+    operation_date_col_idx = header.index('운행일') if '운행일' in header else None
+    total_revenue = 0
+    total_fuel_cost = 0
+    accident_count = 0
+    operation_dates = set()
+    eid_needle = str(employee_id).strip()
+    for row in all_values[1:]:
+        max_col = max(employee_id_col_idx, cash_fare_col_idx, card_fare_col_idx, fuel_cost_col_idx)
+        if accident_col_idx is not None:
+            max_col = max(max_col, accident_col_idx)
+        if operation_date_col_idx is not None:
+            max_col = max(max_col, operation_date_col_idx)
+        if len(row) <= max_col:
+            continue
+        row_employee_id = str(row[employee_id_col_idx]).strip()
+        if row_employee_id != eid_needle:
+            continue
+        if operation_date_col_idx is not None and len(row) > operation_date_col_idx:
+            od = _normalize_sales_operation_date(row[operation_date_col_idx])
+            if od:
+                operation_dates.add(od)
+        try:
+            cash_fare_str = str(row[cash_fare_col_idx]).strip().replace(',', '')
+            total_revenue += int(cash_fare_str) if cash_fare_str else 0
+        except (ValueError, TypeError):
+            pass
+        try:
+            card_fare_str = str(row[card_fare_col_idx]).strip().replace(',', '')
+            total_revenue += int(card_fare_str) if card_fare_str else 0
+        except (ValueError, TypeError):
+            pass
+        try:
+            fuel_cost_str = str(row[fuel_cost_col_idx]).strip().replace(',', '')
+            total_fuel_cost += int(fuel_cost_str) if fuel_cost_str else 0
+        except (ValueError, TypeError):
+            pass
+        if accident_col_idx is not None:
+            accident_status = str(row[accident_col_idx]).strip()
+            if accident_status and ('가해' in accident_status or '가해사고' in accident_status):
+                accident_count += 1
+    return {
+        'total_revenue': total_revenue,
+        'total_fuel_cost': total_fuel_cost,
+        'accident_count': accident_count,
+        'operation_dates': operation_dates,
+    }
+
+
 def get_user_sales_summary(employee_id, month_sheet_name):
     """sales_DB_2026에서 특정 사번의 월별 매출 합계 가져오기 (A:N 범위만 조회).
     같은 스캔으로 운행일 집합(operation_dates)을 채워 has_sales_record 에서 재사용한다.
@@ -985,90 +1121,59 @@ def get_user_sales_summary(employee_id, month_sheet_name):
             return worksheet.get_values(SALES_DB_READ_RANGE)
 
         all_values = _retry_sheets_operation(_fetch_sales_values)
-        if not all_values or len(all_values) < 2:
-            return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
-        
-        header = [str(h).strip() for h in all_values[0]]
-        
-        # 컬럼 인덱스 찾기
-        try:
-            employee_id_col_idx = header.index('사번')
-            cash_fare_col_idx = header.index('현금운임')
-            card_fare_col_idx = header.index('카드운임')
-            fuel_cost_col_idx = header.index('연료비')
-        except ValueError as e:
-            print(f"Error: Required column not found in sales sheet: {e}")
-            return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
-        
-        accident_col_idx = header.index('사고유무') if '사고유무' in header else None
-        operation_date_col_idx = header.index('운행일') if '운행일' in header else None
-        
-        total_revenue = 0
-        total_fuel_cost = 0
-        accident_count = 0
-        operation_dates = set()
-        
-        # 데이터 행 처리 (헤더 제외, 인덱스 1부터)
-        for row_idx, row in enumerate(all_values[1:], start=2):
-            max_col = max(employee_id_col_idx, cash_fare_col_idx, card_fare_col_idx, fuel_cost_col_idx)
-            if accident_col_idx is not None:
-                max_col = max(max_col, accident_col_idx)
-            if operation_date_col_idx is not None:
-                max_col = max(max_col, operation_date_col_idx)
-            if len(row) <= max_col:
-                continue
-            
-            # 사번 확인
-            row_employee_id = str(row[employee_id_col_idx]).strip()
-            if row_employee_id != str(employee_id):
-                continue
-            
-            if operation_date_col_idx is not None and len(row) > operation_date_col_idx:
-                od = _normalize_sales_operation_date(row[operation_date_col_idx])
-                if od:
-                    operation_dates.add(od)
-            
-            # 현금운임
-            try:
-                cash_fare_str = str(row[cash_fare_col_idx]).strip().replace(',', '')
-                cash_fare = int(cash_fare_str) if cash_fare_str else 0
-                total_revenue += cash_fare
-            except (ValueError, TypeError):
-                pass
-            
-            # 카드운임
-            try:
-                card_fare_str = str(row[card_fare_col_idx]).strip().replace(',', '')
-                card_fare = int(card_fare_str) if card_fare_str else 0
-                total_revenue += card_fare
-            except (ValueError, TypeError):
-                pass
-            
-            # 연료비
-            try:
-                fuel_cost_str = str(row[fuel_cost_col_idx]).strip().replace(',', '')
-                fuel_cost = int(fuel_cost_str) if fuel_cost_str else 0
-                total_fuel_cost += fuel_cost
-            except (ValueError, TypeError):
-                pass
-            
-            # 가해사고 건수 (같은 시트 한 번 읽기로 함께 계산)
-            if accident_col_idx is not None:
-                accident_status = str(row[accident_col_idx]).strip()
-                if accident_status and ('가해' in accident_status or '가해사고' in accident_status):
-                    accident_count += 1
-        
-        return {
-            'total_revenue': total_revenue,
-            'total_fuel_cost': total_fuel_cost,
-            'accident_count': accident_count,
-            'operation_dates': operation_dates,
-        }
+        return _parse_sales_summary_from_values(all_values, employee_id)
     except Exception as e:
         print(f"Error getting user sales summary: {e}")
         import traceback
         traceback.print_exc()
         return {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
+
+
+def prefetch_user_sales_summaries_batch(employee_id, month_sheet_names, sales_summary_cache=None):
+    """sales_DB 여러 월을 batchGet으로 묶어 읽어 sales_summary:{사번}:{월} 캐시를 채운다."""
+    empty = {'total_revenue': 0, 'total_fuel_cost': 0, 'accident_count': 0, 'operation_dates': set()}
+    if not month_sheet_names:
+        return
+    eid = str(employee_id).strip()
+    need = []
+    for mn in month_sheet_names:
+        ck = f'sales_summary:{eid}:{mn}'
+        if sales_summary_cache is None or sales_summary_cache.get(ck) is None:
+            need.append(mn)
+    if not need:
+        return
+    spreadsheet = get_sales_spreadsheet()
+    sid = spreadsheet.id
+    BATCH = getattr(config, 'SHEETS_WORK_BATCH_CHUNK', 90)
+    BATCH = max(1, min(200, int(BATCH)))
+    for off in range(0, len(need), BATCH):
+        chunk = need[off : off + BATCH]
+        ranges_a1 = [_sheet_title_to_a1_range(mn, SALES_DB_READ_RANGE) for mn in chunk]
+        try:
+            resp = _sheet_values_batch_get(sid, ranges_a1)
+        except Exception as ex:
+            print(f'sales DB batchGet 실패: {str(ex)[:400]}')
+            resp = {'valueRanges': []}
+        raw_by = {}
+        for vr in (resp.get('valueRanges') or []):
+            nm = _sheet_name_from_batch_range(vr.get('range', '') or '')
+            if nm:
+                raw_by[nm] = vr.get('values')
+        for mn in chunk:
+            ck = f'sales_summary:{eid}:{mn}'
+            raw = raw_by.get(mn)
+            summ = empty
+            try:
+                if raw is None:
+                    summ = get_user_sales_summary(eid, mn)
+                else:
+                    summ = _parse_sales_summary_from_values(raw or [], eid)
+            except Exception as ex:
+                print(f'prefetch_sales {mn}: {ex}')
+                summ = empty
+            if sales_summary_cache is not None:
+                sales_summary_cache.set(ck, summ)
+
 
 def has_sales_record_for_date(employee_id, month_sheet_name, operation_date):
     """매출 시트를 다시 읽지 않고 get_user_sales_summary와 동일 스캔 결과(운행일 집합)로 판별.

@@ -145,9 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var elC = document.getElementById('yearly-accident');
         if (!yearlyBar || !elA || !elL || !elC) return;
 
-        fetch('{{ url_for("api_main_yearly_stats") }}', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
+        function applyYearlyPayload(d) {
                 if (!d.ok) throw new Error(d.error || 'load failed');
                 elA.textContent = (d.annual_absent_days != null ? d.annual_absent_days : '0') + '일';
                 var ent = d.annual_leave_entitlement != null ? d.annual_leave_entitlement : '0';
@@ -155,6 +153,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 elL.textContent = rem + ' / ' + ent + '일';
                 elC.textContent = (d.annual_accident_count != null ? d.annual_accident_count : '0') + '건';
                 yearlyBar.setAttribute('aria-busy', 'false');
+        }
+
+        function fetchYearlyStats(qs) {
+            var u = '{{ url_for("api_main_yearly_stats") }}' + (qs || '');
+            return fetch(u, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); });
+        }
+
+        fetchYearlyStats('')
+            .then(function (d) {
+                applyYearlyPayload(d);
+                if (d.ok && d.revalidate_suggested) {
+                    var ms = typeof d.revalidate_after_ms === 'number' ? d.revalidate_after_ms : 2600;
+                    setTimeout(function () {
+                        fetchYearlyStats('?follow=up')
+                            .then(applyYearlyPayload)
+                            .catch(function () { /* 첫 패치 결과 유지 */ });
+                    }, ms);
+                }
             })
             .catch(function () {
                 elA.textContent = '—';

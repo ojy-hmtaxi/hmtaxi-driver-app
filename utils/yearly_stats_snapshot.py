@@ -59,6 +59,35 @@ def get_heavy(employee_id, year, ttl_sec, db_path):
             conn.close()
 
 
+def peek_heavy(employee_id, year, ttl_sec, db_path):
+    """스냅샷 행이 있으면 (데이터 dict, TTL 만료 여부). 없으면 None.
+
+    SWR에서 만료 행이라도 먼저 보여 줄 때 사용. ttl_sec<=0 이면 stale=True 로만 본다."""
+    if not db_path:
+        return None
+    path = os.path.abspath(db_path)
+    if not os.path.exists(path):
+        return None
+    with _lock:
+        conn = sqlite3.connect(path, check_same_thread=False)
+        try:
+            _init_db(conn)
+            row = conn.execute(
+                'SELECT annual_absent_days, annual_accident_count, updated_at FROM yearly_heavy WHERE employee_id=? AND year=?',
+                (str(employee_id), int(year)),
+            ).fetchone()
+            if not row:
+                return None
+            absent, acc, ts = row
+            d = {'annual_absent_days': int(absent), 'annual_accident_count': int(acc)}
+            if ttl_sec <= 0:
+                return (d, True)
+            stale = time.time() - float(ts) > ttl_sec
+            return (d, stale)
+        finally:
+            conn.close()
+
+
 def put_heavy(employee_id, year, annual_absent_days, annual_accident_count, db_path):
     if not db_path:
         return

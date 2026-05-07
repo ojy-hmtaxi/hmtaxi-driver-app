@@ -58,6 +58,8 @@ WORK_HISTORY_RECENT_MONTHS = int(os.environ.get('WORK_HISTORY_RECENT_MONTHS', '1
 # /main 강제 갱신 제한: ALLOW_MAIN_FRESH_QUERY=0 또는 false / no / off
 # SQLite 연간 스냅샷: YEARLY_STATS_SNAPSHOT_DB_PATH , YEARLY_STATS_SNAPSHOT_TTL_SEC
 # 선택 배경 갱신: YEARLY_STATS_BG_REFRESH_ENABLED , YEARLY_STATS_BG_REFRESH_INTERVAL_SEC
+# SWR 재패치: YEARLY_SWR_RECHECK_MS
+# batchGet chunk: SHEETS_WORK_BATCH_CHUNK
 
 # Sheets 읽기 429 완화: 재시도·병렬·앱측 데이터 캐시 (초)
 # 재시도/sleep 합이 Gunicorn timeout(보통 30s)보다 크면 WORKER TIMEOUT 발생 → backoff 상한 필수.
@@ -85,4 +87,10 @@ YEARLY_STATS_SNAPSHOT_TTL_SEC = max(0, min(86400 * 30, int(os.environ.get('YEARL
 _bg_yearly = (os.environ.get('YEARLY_STATS_BG_REFRESH_ENABLED') or '0').strip().lower()
 YEARLY_STATS_BG_REFRESH_ENABLED = _bg_yearly in ('1', 'true', 'yes', 'on')
 YEARLY_STATS_BG_REFRESH_INTERVAL_SEC = max(120, min(86400, int(os.environ.get('YEARLY_STATS_BG_REFRESH_INTERVAL_SEC', '600'))))
+
+# 연간 블록 SWR: stale 응답 후 클라이언트 재패치 간격(ms)
+YEARLY_SWR_RECHECK_MS = max(500, min(60000, int(os.environ.get('YEARLY_SWR_RECHECK_MS', '2600'))))
+
+# work/sales 각 스프레드시트 값 batchGet 한 요청당 최대 range 개수(URI·쿼터 안전)
+SHEETS_WORK_BATCH_CHUNK = max(1, min(200, int(os.environ.get('SHEETS_WORK_BATCH_CHUNK', '90'))))
 
