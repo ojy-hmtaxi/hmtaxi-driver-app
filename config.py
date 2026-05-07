@@ -54,7 +54,9 @@ MONTHS = ['1월', '2월', '3월', '4월', '5월', '6월',
 WORK_HISTORY_RECENT_MONTHS = int(os.environ.get('WORK_HISTORY_RECENT_MONTHS', '12'))
 
 # Sheets 읽기 429 완화: 재시도·병렬·앱측 데이터 캐시 (초)
-SHEETS_READ_RETRY_ATTEMPTS = max(4, min(20, int(os.environ.get('SHEETS_READ_RETRY_ATTEMPTS', '12'))))
+# 재시도/sleep 합이 Gunicorn timeout(보통 30s)보다 크면 WORKER TIMEOUT 발생 → backoff 상한 필수.
+SHEETS_READ_RETRY_ATTEMPTS = max(2, min(15, int(os.environ.get('SHEETS_READ_RETRY_ATTEMPTS', '5'))))
+SHEETS_429_BACKOFF_CAP_SEC = max(2.0, min(60.0, float(os.environ.get('SHEETS_429_BACKOFF_CAP_SEC', '10.0'))))
 SHEETS_PARALLEL_MONTH_WORKERS = max(1, min(12, int(os.environ.get('SHEETS_PARALLEL_MONTH_WORKERS', '3'))))
 WORK_DATA_CACHE_SECONDS = max(30, min(3600, int(os.environ.get('WORK_DATA_CACHE_SECONDS', '180'))))
 SALES_SUMMARY_CACHE_SECONDS = max(30, min(3600, int(os.environ.get('SALES_SUMMARY_CACHE_SECONDS', '300'))))

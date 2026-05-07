@@ -29,10 +29,10 @@ def _is_sheets_read_quota_error(exc):
 
 
 def _sheets_quota_backoff(attempt_index):
-    """429 시 지수 백오프 + 지터 (분당 한도 회복까지 여유 두기)."""
-    base = min(4.5 * (1.92 ** attempt_index), 58.0)
-    jitter = random.random() * 1.25
-    time.sleep(min(base + jitter, 65.0))
+    """429 후 대기 Gunicorn sync 워커 타임아웃을 피하기 위해 sleep 상한 적용."""
+    cap = getattr(config, 'SHEETS_429_BACKOFF_CAP_SEC', 10.0)
+    raw = min(1.15 * (1.85 ** attempt_index) + random.random() * 0.85, cap)
+    time.sleep(max(0.4, raw))
 
 
 def _retry_sheets_operation(operation_fn, attempts=None):
