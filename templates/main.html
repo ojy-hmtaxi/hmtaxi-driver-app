@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}메인 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="calendar-container main-dashboard">
+    <div class="header main-dashboard-header">
+        <div class="header-left">
+            <div class="company-name">한미산업운수(주)</div>
+            <div class="user-info main-dashboard-user">
+                <div>
+                    <div class="driver-line">
+                        <span class="driver-name">{{ session.get('name', '') }} 기사님 ({{ session.get('employee_id', '') }})</span>
+                    </div>
+                    {% if today_vehicle %}
+                    <div class="today-vehicle">
+                        {{ today_vehicle }}{% if today_vehicle_type %}({{ today_vehicle_type }}){% endif %}
+                        {% if today_replacement_vehicle %}→{{ today_replacement_vehicle }}{% if today_replacement_vehicle_type %}({{ today_replacement_vehicle_type }}){% endif %}{% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            <!-- <a href="{{ url_for('calendar_view') }}" class="main-calendar-link">근무일정 보기</a> -->
+        </div>
+        <div class="header-right">
+            <div class="user-actions">
+                <a href="{{ url_for('notice_list') }}" class="btn btn-main-notice btn-sm btn-notice" id="noticeBtn">공지사항</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-primary-grid">
+        <a href="{{ url_for('work_start') if can_start_work else '#' }}"
+           class="main-tile main-tile-start {% if not can_start_work %}btn-disabled{% endif %}"
+           {% if not can_start_work %}aria-disabled="true"{% endif %}>근무준비</a>
+        <a href="{{ url_for('work_end') }}" class="main-tile main-tile-end {% if not can_end_work %}btn-disabled{% endif %}"
+           {% if not can_end_work %}aria-disabled="true"{% endif %}>근무종료</a>
+    </div>
+
+    <div class="main-secondary-actions">
+        {% if show_replacement_button %}
+        <a href="{{ url_for('vehicle_replacement_apply') }}" class="main-secondary-btn main-secondary-replacement">대차신청</a>
+        {% else %}
+        <span class="main-secondary-btn main-secondary-replacement is-disabled" aria-disabled="true">대차신청</span>
+        {% endif %}
+        <a href="{{ url_for('leave_request') }}" class="main-secondary-btn main-secondary-leave">휴가신청</a>
+    </div>
+
+    <p class="main-stats-month-note">{{ month_name }} 근태 현황</p>
+    <div class="main-stats-bar">
+        <div class="main-stat">
+            <span class="main-stat-label">결근일</span>
+            <span class="main-stat-value">{{ absent_days }}일</span>
+        </div>
+        <div class="main-stat">
+            <span class="main-stat-label">휴가</span>
+            <span class="main-stat-value">{{ holiday_days_count }}일</span>
+        </div>
+        <div class="main-stat">
+            <span class="main-stat-label">가해사고</span>
+            <span class="main-stat-value">{{ accident_count }}건</span>
+        </div>
+    </div>
+
+    <p class="main-stats-month-note"> 연간 근태 현황</p>
+    <div class="main-stats-bar">
+        <div class="main-stat">
+            <span class="main-stat-label">결근일</span>
+            <span class="main-stat-value">{{ annual_absent_days|default(0) }}일</span>
+        </div>
+        <div class="main-stat">
+            <span class="main-stat-label">근속연차</span>
+            <span class="main-stat-value">{{ annual_leave_remaining|default(0) }} / {{ annual_leave_entitlement|default(0) }}일</span>
+        </div>
+        <div class="main-stat">
+            <span class="main-stat-label">가해사고</span>
+            <span class="main-stat-value">{{ annual_accident_count|default(0) }}건</span>
+        </div>
+    </div>
+    <br>
+    <div class="main-logout-wrap">
+        <a href="{{ url_for('logout') }}" class="main-secondary-btn main-logout-btn" id="logoutBtn">로그아웃</a>
+    </div>
+
+</div>
+
+<div id="logoutModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>로그아웃</h3>
+        </div>
+        <div class="modal-body">
+            <div class="confirm-question">
+                로그아웃 하시겠습니까?
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="logoutCancelBtn">취소</button>
+            <button type="button" class="btn btn-primary" id="logoutConfirmBtn">확인</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const logoutBtn = document.getElementById('logoutBtn');
+    const logoutModal = document.getElementById('logoutModal');
+    const logoutCancelBtn = document.getElementById('logoutCancelBtn');
+    const logoutConfirmBtn = document.getElementById('logoutConfirmBtn');
+    if (!logoutBtn || !logoutModal) return;
+    const logoutUrl = logoutBtn.getAttribute('href');
+    function isMobile() {
+        return window.innerWidth <= 768;
+    }
+    logoutBtn.addEventListener('click', function(e) {
+        if (isMobile()) {
+            e.preventDefault();
+            logoutModal.style.display = 'flex';
+        }
+    });
+    logoutCancelBtn.addEventListener('click', function() {
+        logoutModal.style.display = 'none';
+    });
+    logoutConfirmBtn.addEventListener('click', function() {
+        window.skipProgressBar = true;
+        window.location.href = logoutUrl;
+    });
+    logoutModal.addEventListener('click', function(e) {
+        if (e.target === logoutModal) {
+            logoutModal.style.display = 'none';
+        }
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && logoutModal.style.display === 'flex') {
+            logoutModal.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}

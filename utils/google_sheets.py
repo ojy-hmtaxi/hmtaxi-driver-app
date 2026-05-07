@@ -1,10 +1,52 @@
 import re
+import random
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
+from datetime import date, datetime
 import gspread
 from google.oauth2.service_account import Credentials
 import config
 import os
+
+
+def _is_sheets_read_quota_error(exc):
+    """Google Sheets API 분당 읽기 한도(429 RESOURCE_EXHAUSTED) 여부."""
+    msg = str(exc)
+    return (
+        '429' in msg
+        or 'RESOURCE_EXHAUSTED' in msg
+        or 'Quota exceeded' in msg
+        or 'RATE_LIMIT_EXCEEDED' in msg
+    )
+
+
+def _sheets_quota_backoff(attempt_index):
+    """429 시 지수 백오프 + 소량 지터."""
+    time.sleep(min(0.45 * (2 ** attempt_index) + random.random() * 0.25, 22.0))
+
+
+def _retry_sheets_operation(operation_fn, attempts=6):
+    """읽기 쿼터 초과 시 짧게 재시도."""
+    last_exc = None
+    for attempt in range(attempts):
+        try:
+            return operation_fn()
+        except Exception as e:
+            last_exc = e
+            if attempt < attempts - 1 and _is_sheets_read_quota_error(e):
+                print(f"Sheets API 재시도({attempt + 1}/{attempts}): {e}")
+                _sheets_quota_backoff(attempt)
+                continue
+            raise
+    raise last_exc
+
+
+ACCOUNTS_CACHE_TTL_SEC = 180
+_accounts_cache_lock = threading.Lock()
+_accounts_cache_records = None
+_accounts_cache_ts = 0.0
+
 
 def get_google_sheets_client():
     """Google Sheets API 클라이언트 생성"""
@@ -25,41 +67,36 @@ def get_google_sheets_client():
                 f"로컬 개발 환경에서는 {config.CREDENTIALS_FILE} 파일이 필요합니다.\n"
                 f"클라우드 배포 환경에서는 GOOGLE_CREDENTIALS 환경 변수를 설정하세요."
             )
-        creds = Credentials.from_service_account_file(
-            config.CREDENTIALS_FILE,
-            scopes=config.SCOPES
-        )
+    creds = Credentials.from_service_account_file(
+        config.CREDENTIALS_FILE,
+        scopes=config.SCOPES
+    )
     
     client = gspread.authorize(creds)
     return client
 
-def get_spreadsheet():
-    """스프레드시트 객체 반환"""
+def _open_work_spreadsheet_once():
+    """work_DB 스프레드시트 1회 오픈 (429는 상위에서 재시도)."""
     client = get_google_sheets_client()
     
-    # 스프레드시트 ID가 있으면 ID로 열기 (우선순위)
     if config.SPREADSHEET_ID:
         try:
-            spreadsheet = client.open_by_key(config.SPREADSHEET_ID)
-            return spreadsheet
+            return client.open_by_key(config.SPREADSHEET_ID)
         except Exception as e:
             print(f"Warning: Failed to open spreadsheet by ID {config.SPREADSHEET_ID}: {e}")
-            # ID로 열기 실패 시 이름으로 시도
     
-    # 이름으로 찾기 시도
     try:
         return client.open(config.SPREADSHEET_NAME)
     except gspread.exceptions.SpreadsheetNotFound:
         print(f"Error: Spreadsheet '{config.SPREADSHEET_NAME}' not found.")
         print("Trying to list available spreadsheets...")
         try:
-            # 접근 가능한 스프레드시트 목록 출력
             spreadsheets = client.openall()
             print(f"Available spreadsheets ({len(spreadsheets)} found):")
             for sheet in spreadsheets:
                 print(f"  - {sheet.title} (ID: {sheet.id})")
-        except Exception as e:
-            print(f"  Could not list spreadsheets: {e}")
+        except Exception as list_err:
+            print(f"  Could not list spreadsheets: {list_err}")
         
         raise Exception(
             f"스프레드시트 '{config.SPREADSHEET_NAME}'을(를) 찾을 수 없습니다.\n"
@@ -69,25 +106,27 @@ def get_spreadsheet():
             f"3. config.py의 SPREADSHEET_ID가 올바른지 확인: {config.SPREADSHEET_ID}"
         )
 
+
+def get_spreadsheet():
+    """스프레드시트 객체 반환 (읽기 한도 초과 시 자동 재시도)."""
+    return _retry_sheets_operation(_open_work_spreadsheet_once)
+
+
 def get_worksheet(sheet_name):
     """특정 워크시트 반환"""
     spreadsheet = get_spreadsheet()
     return spreadsheet.worksheet(sheet_name)
 
-def get_sales_spreadsheet():
-    """sales_DB_2026 스프레드시트 객체 반환"""
+def _open_sales_spreadsheet_once():
+    """sales_DB 스프레드시트 1회 오픈."""
     client = get_google_sheets_client()
     
-    # 스프레드시트 ID가 있으면 ID로 열기 (우선순위)
     if config.SALES_SPREADSHEET_ID:
         try:
-            spreadsheet = client.open_by_key(config.SALES_SPREADSHEET_ID)
-            return spreadsheet
+            return client.open_by_key(config.SALES_SPREADSHEET_ID)
         except Exception as e:
             print(f"Warning: Failed to open sales spreadsheet by ID {config.SALES_SPREADSHEET_ID}: {e}")
-            # ID로 열기 실패 시 이름으로 시도
     
-    # 이름으로 찾기 시도
     try:
         return client.open(config.SALES_SPREADSHEET_NAME)
     except gspread.exceptions.SpreadsheetNotFound:
@@ -97,34 +136,54 @@ def get_sales_spreadsheet():
             f"서비스 계정이 스프레드시트에 편집자 권한으로 공유되었는지 확인하세요."
         )
 
+
+def get_sales_spreadsheet():
+    """sales_DB_2026 스프레드시트 객체 반환 (읽기 한도 초과 시 자동 재시도)."""
+    return _retry_sheets_operation(_open_sales_spreadsheet_once)
+
+
 def get_sales_worksheet(month_sheet_name):
     """sales_DB_2026의 특정 월별 워크시트 반환"""
     spreadsheet = get_sales_spreadsheet()
     return spreadsheet.worksheet(month_sheet_name)
 
 def get_accounts_data():
-    """accounts 시트에서 모든 사용자 데이터 가져오기"""
-    try:
+    """accounts 시트에서 모든 사용자 데이터 가져오기 (단기 캐시로 읽기 호출 감소)."""
+    global _accounts_cache_records, _accounts_cache_ts
+
+    now = time.time()
+    with _accounts_cache_lock:
+        if _accounts_cache_records is not None and now - _accounts_cache_ts < ACCOUNTS_CACHE_TTL_SEC:
+            return list(_accounts_cache_records)
+
+    def fetch_records():
         worksheet = get_worksheet("accounts")
+        return worksheet.get_all_records()
         
-        # get_all_records()는 헤더를 키로 사용하는 딕셔너리 리스트를 반환
-        records = worksheet.get_all_records()
+    try:
+        records = _retry_sheets_operation(fetch_records)
         
-        # 키의 공백을 제거하여 정규화 (Google Sheets의 헤더에 공백이 있을 수 있음)
         normalized_records = []
         for record in records:
             normalized_record = {}
             for key, value in record.items():
-                # 키에서 앞뒤 공백 제거
                 normalized_key = key.strip() if key else key
                 normalized_record[normalized_key] = value
             normalized_records.append(normalized_record)
         
-        return normalized_records
+        with _accounts_cache_lock:
+            _accounts_cache_records = normalized_records
+            _accounts_cache_ts = time.time()
+        return list(normalized_records)
     except Exception as e:
         print(f"Error getting accounts data: {e}")
         import traceback
         traceback.print_exc()
+        with _accounts_cache_lock:
+            stale = _accounts_cache_records
+        if stale is not None:
+            print('Warning: accounts 시트 조회 실패 — 직전에 성공한 캐시 데이터를 사용합니다.')
+            return list(stale)
         return []
 
 def get_user_by_id(employee_id):
@@ -164,7 +223,7 @@ def update_user_password(employee_id, password_hash):
     """사용자 비밀번호 해시 업데이트"""
     try:
         worksheet = get_worksheet("accounts")
-        accounts = worksheet.get_all_values()
+        accounts = worksheet.get_values(ACCOUNTS_READ_RANGE)
         
         if not accounts:
             return False
@@ -194,8 +253,10 @@ def update_user_password(employee_id, password_hash):
         return False
 
 # 캘린더·근무 조회 시 시트 전체 대신 읽는 열 범위 (전송량·API 부담 감소)
-WORK_DB_READ_RANGE = 'A:AM'  # 차량·사번·근무일수·결근일수·일별 상태(31일)까지
+WORK_DB_READ_RANGE = 'A:AM'  # 차량·사번·근무일·결근일·휴가·일별 상태(31일)까지
 SALES_DB_READ_RANGE = 'A:N'  # 요약·운행일 판별에 필요한 열
+LOANER_DB_READ_RANGE = 'A:F'  # 차량번호·차종·대차가능·신청일·사용자·사번
+ACCOUNTS_READ_RANGE = 'A:Z'  # accounts 시트(아이디/해시 등) 조회 범위
 
 
 def _rows_to_dict_records(raw_rows):
@@ -213,7 +274,7 @@ def _rows_to_dict_records(raw_rows):
             rec[key] = '' if val is None or val == '' else str(val).strip()
         if rec.get('사번'):
             records.append(rec)
-    return records
+        return records
 
 
 def get_monthly_work_data(month_sheet_name, spreadsheet=None):
@@ -269,7 +330,7 @@ def update_work_status(employee_id, date, month_sheet_name, status='O', work_det
     """
     try:
         worksheet = get_worksheet(month_sheet_name)
-        all_values = worksheet.get_all_values()
+        all_values = worksheet.get_values(WORK_DB_READ_RANGE)
         
         if not all_values:
             return False
@@ -385,11 +446,11 @@ def format_work_details_note(work_details):
     if work_details.get('work_type'):
         note_lines.append(f"근무유형: {work_details.get('work_type')}")
     
-    if work_details.get('vehicle_condition'):
-        note_lines.append(f"차량상태: {work_details.get('vehicle_condition')}")
+    # TODO(restore): if work_details.get('vehicle_condition'):
+    #     note_lines.append(f"차량상태: {work_details.get('vehicle_condition')}")
     
-    if work_details.get('special_notes'):
-        note_lines.append(f"보고사항: {work_details.get('special_notes')}")
+    # TODO(restore): if work_details.get('special_notes'):
+    #     note_lines.append(f"보고사항: {work_details.get('special_notes')}")
     
     return "\n".join(note_lines) if note_lines else ""
 
@@ -410,7 +471,7 @@ def add_note_via_api(worksheet, row, col, note_text):
         else:
             creds = Credentials.from_service_account_file(
                 config.CREDENTIALS_FILE,
-                scopes=config.SCOPES
+                scopes=config.SCOPES,
             )
         
         # Google Sheets API 서비스 빌드
@@ -471,7 +532,7 @@ def add_note_via_api(worksheet, row, col, note_text):
         return False
 
 def update_work_stats(worksheet, row_num, header, employee_id):
-    """근무일수와 결근일수 자동 계산 및 업데이트"""
+    """근무일/결근일 자동 계산 및 업데이트."""
     try:
         # 날짜 컬럼 찾기 (1~31)
         date_columns = []
@@ -497,31 +558,44 @@ def update_work_stats(worksheet, row_num, header, employee_id):
                 elif value == 'X':
                     absent_count += 1
         
-        # 근무일수와 결근일수 컬럼 찾기
+        # 근무일/결근일 컬럼 찾기
         try:
-            work_days_col = header.index('근무일수') + 1
-            absent_days_col = header.index('결근일수') + 1
-            
-            # 업데이트 (보호된 셀인 경우 오류 무시)
+            from gspread.utils import rowcol_to_a1
+            work_days_col = header.index('근무일') + 1
+            absent_days_col = header.index('결근일') + 1
+
+            # 네트워크 왕복 감소: 두 셀을 batch_update 1회로 처리
+            ranges = [
+                {
+                    'range': rowcol_to_a1(row_num, work_days_col),
+                    'values': [[work_count]],
+                },
+                {
+                    'range': rowcol_to_a1(row_num, absent_days_col),
+                    'values': [[absent_count]],
+                },
+            ]
             try:
-                worksheet.update_cell(row_num, work_days_col, work_count)
-            except Exception as e:
-                # 보호된 셀이거나 권한이 없는 경우 무시
-                error_msg = str(e)
-                if 'protected' in error_msg.lower() or 'permission' in error_msg.lower():
-                    print(f"Warning: '근무일수' 셀이 보호되어 있어 업데이트를 건너뜁니다.")
-                else:
-                    print(f"Warning: '근무일수' 업데이트 실패: {e}")
-            
-            try:
-                worksheet.update_cell(row_num, absent_days_col, absent_count)
-            except Exception as e:
-                # 보호된 셀이거나 권한이 없는 경우 무시
-                error_msg = str(e)
-                if 'protected' in error_msg.lower() or 'permission' in error_msg.lower():
-                    print(f"Warning: '결근일수' 셀이 보호되어 있어 업데이트를 건너뜁니다.")
-                else:
-                    print(f"Warning: '결근일수' 업데이트 실패: {e}")
+                worksheet.batch_update(ranges, value_input_option='USER_ENTERED')
+            except Exception:
+                # 배치 업데이트 실패 시 기존 방식으로 폴백 (보호 셀 메시지 유지)
+                try:
+                    worksheet.update_cell(row_num, work_days_col, work_count)
+                except Exception as e:
+                    error_msg = str(e)
+                    if 'protected' in error_msg.lower() or 'permission' in error_msg.lower():
+                        print("Warning: '근무일' 셀이 보호되어 있어 업데이트를 건너뜁니다.")
+                    else:
+                        print(f"Warning: '근무일' 업데이트 실패: {e}")
+
+                try:
+                    worksheet.update_cell(row_num, absent_days_col, absent_count)
+                except Exception as e:
+                    error_msg = str(e)
+                    if 'protected' in error_msg.lower() or 'permission' in error_msg.lower():
+                        print("Warning: '결근일' 셀이 보호되어 있어 업데이트를 건너뜁니다.")
+                    else:
+                        print(f"Warning: '결근일' 업데이트 실패: {e}")
         except ValueError:
             # 컬럼이 없으면 스킵
             pass
@@ -557,23 +631,30 @@ def _aggregate_user_month_records(all_records):
     aggregated = {}
     first_record = all_records[0]
     for key, value in first_record.items():
-        if key not in ['근무일수', '결근일수', '인정일수']:
+        if key not in ['근무일', '결근일', '인정일']:
             aggregated[key] = value
     work_days_total = 0
     absent_days_total = 0
+    approved_days_total = 0
     for record in all_records:
         try:
-            work_days_val = record.get('근무일수', 0) or 0
+            work_days_val = record.get('근무일', 0) or 0
             work_days_total += int(work_days_val) if work_days_val else 0
         except (ValueError, TypeError):
             pass
         try:
-            absent_days_val = record.get('결근일수', 0) or 0
+            absent_days_val = record.get('결근일', 0) or 0
             absent_days_total += int(absent_days_val) if absent_days_val else 0
         except (ValueError, TypeError):
             pass
-    aggregated['근무일수'] = work_days_total
-    aggregated['결근일수'] = absent_days_total
+        try:
+            approved_val = record.get('인정일', 0) or 0
+            approved_days_total += int(approved_val) if approved_val else 0
+        except (ValueError, TypeError):
+            pass
+    aggregated['근무일'] = work_days_total
+    aggregated['결근일'] = absent_days_total
+    aggregated['인정일'] = approved_days_total
     return aggregated
 
 
@@ -648,7 +729,7 @@ def get_today_work_start_info(employee_id, month_sheet_name, day):
     """오늘 날짜의 근무 시작 정보 가져오기 (work_DB_2026의 메모에서)"""
     try:
         worksheet = get_worksheet(month_sheet_name)
-        all_values = worksheet.get_all_values()
+        all_values = worksheet.get_values(WORK_DB_READ_RANGE)
         
         if not all_values:
             return None
@@ -671,12 +752,13 @@ def get_today_work_start_info(employee_id, month_sheet_name, day):
         
         if date_col is None:
             return None
-        
+
         from gspread.utils import rowcol_to_a1
+
         vehicle_num_col = header.index('차량번호') + 1 if '차량번호' in header else None
         vehicle_type_col = header.index('차종') + 1 if '차종' in header else None
         first_info_with_note = None  # 운행시작일시 없는 경우 폴백
-        
+
         # 해당 사번의 행 찾기 (운행시작일시가 있는 행 = 해당일 실제 근무 시작 행을 우선)
         for i, row in enumerate(all_values[1:], start=2):
             if len(row) < employee_id_col or str(row[employee_id_col - 1]).strip() != str(employee_id).strip():
@@ -735,7 +817,7 @@ def get_note_via_api(worksheet, row, col):
         else:
             creds = Credentials.from_service_account_file(
                 config.CREDENTIALS_FILE,
-                scopes=config.SCOPES
+                scopes=config.SCOPES,
             )
         
         # Google Sheets API 서비스 빌드
@@ -784,14 +866,15 @@ def get_note_via_api(worksheet, row, col):
         print(f"Error getting note via API: {e}")
         return None
 
-def add_sales_record(month_sheet_name, sales_data, note_text=None, vehicle_condition_note=None):
+def add_sales_record(month_sheet_name, sales_data, note_text=None):
     """sales_DB_2026에 매출 데이터 추가
     
     Args:
         month_sheet_name: 월별 시트 이름
         sales_data: 매출 데이터 딕셔너리
         note_text: 근무시간(분) 셀에 추가할 메모 (운행시작일시, 운행종료일시, 근무시간)
-        vehicle_condition_note: 차량번호 셀에 추가할 메모 (보고사항)
+        # TODO(restore): 임시 비활성화 - vehicle_condition_note
+        # TODO(restore): vehicle_condition_note: 차량번호 셀에 추가할 메모 (보고사항)
     """
     try:
         worksheet = get_sales_worksheet(month_sheet_name)
@@ -801,7 +884,7 @@ def add_sales_record(month_sheet_name, sales_data, note_text=None, vehicle_condi
         header = [str(h).strip() for h in header]
         
         # 다음 행 번호 계산 (헤더 포함 기존 데이터 개수 + 1)
-        all_values = worksheet.get_all_values()
+        all_values = worksheet.get_values(SALES_DB_READ_RANGE)
         next_row = len(all_values) + 1 if all_values else 2
         
         # 데이터 행 구성
@@ -832,24 +915,18 @@ def add_sales_record(month_sheet_name, sales_data, note_text=None, vehicle_condi
                 except Exception as api_error:
                     print(f"Warning: Could not insert note via API for sales record: {api_error}")
         
-        # 차량번호 셀에 메모 추가 (보고사항)
-        if vehicle_condition_note and '차량번호' in header:
-            try:
-                from gspread.utils import rowcol_to_a1
-                vehicle_number_col = header.index('차량번호') + 1
-                cell_address = rowcol_to_a1(next_row, vehicle_number_col)
-                
-                if hasattr(worksheet, 'insert_note'):
-                    worksheet.insert_note(cell_address, vehicle_condition_note)
-                else:
-                    # gspread에서 insert_note 지원하지 않는 경우 API 사용
-                    add_note_via_api(worksheet, next_row, vehicle_number_col, vehicle_condition_note)
-            except Exception as note_error:
-                print(f"Warning: Could not insert vehicle condition note for sales record: {note_error}")
-                try:
-                    add_note_via_api(worksheet, next_row, vehicle_number_col, vehicle_condition_note)
-                except Exception as api_error:
-                    print(f"Warning: Could not insert vehicle condition note via API for sales record: {api_error}")
+        # TODO(restore): 차량번호 셀에 메모 추가 (보고사항)
+        # TODO(restore): if vehicle_condition_note and '차량번호' in header:
+        #    try:
+        # TODO(restore):        from gspread.utils import rowcol_to_a1
+        # TODO(restore):        vehicle_number_col = header.index('차량번호') + 1
+        # TODO(restore):        cell_address = rowcol_to_a1(next_row, vehicle_number_col)
+        #        
+        # TODO(restore):        if hasattr(worksheet, 'insert_note'):
+        # TODO(restore):            worksheet.insert_note(cell_address, vehicle_condition_note)
+        # TODO(restore):        else:
+        # TODO(restore):            # gspread에서 insert_note 지원하지 않는 경우 API 사용
+        # TODO(restore):            add_note_via_api(worksheet, next_row, vehicle_number_col, vehicle_condition_note)
         
         print(f"Successfully added sales record to {month_sheet_name}")
         return True
@@ -993,7 +1070,7 @@ def get_loaner_vehicles():
     """[대차차량] 시트에서 대차가능('O')인 차량 목록 반환"""
     try:
         worksheet = get_worksheet(LOANER_SHEET_NAME)
-        all_values = worksheet.get_all_values()
+        all_values = worksheet.get_values(LOANER_DB_READ_RANGE)
         if not all_values or len(all_values) < 2:
             return []
         header = [str(h).strip() for h in all_values[0]]
@@ -1023,7 +1100,7 @@ def update_loaner_vehicle_on_apply(vehicle_number, employee_id, driver_name, app
     """대차 신청 시 [대차차량] 시트 해당 행 수정: 대차가능=X, 대차신청일, 대차사용자, 사번"""
     try:
         worksheet = get_worksheet(LOANER_SHEET_NAME)
-        all_values = worksheet.get_all_values()
+        all_values = worksheet.get_values(LOANER_DB_READ_RANGE)
         if not all_values or len(all_values) < 2:
             return False
         header = [str(h).strip() for h in all_values[0]]
@@ -1032,18 +1109,34 @@ def update_loaner_vehicle_on_apply(vehicle_number, employee_id, driver_name, app
         if num_col is None:
             return False
         vn = str(vehicle_number).strip()
+        from gspread.utils import rowcol_to_a1
         for i, row in enumerate(all_values[1:], start=2):
             if len(row) <= num_col:
                 continue
             if str(row[num_col]).strip() == vn:
+                updates = []
                 if '대차가능' in col_idx:
-                    worksheet.update_cell(i, col_idx['대차가능'] + 1, 'X')
+                    updates.append({
+                        'range': rowcol_to_a1(i, col_idx['대차가능'] + 1),
+                        'values': [['X']],
+                    })
                 if '대차신청일' in col_idx:
-                    worksheet.update_cell(i, col_idx['대차신청일'] + 1, apply_date_str)
+                    updates.append({
+                        'range': rowcol_to_a1(i, col_idx['대차신청일'] + 1),
+                        'values': [[apply_date_str]],
+                    })
                 if '대차사용자' in col_idx:
-                    worksheet.update_cell(i, col_idx['대차사용자'] + 1, driver_name or '')
+                    updates.append({
+                        'range': rowcol_to_a1(i, col_idx['대차사용자'] + 1),
+                        'values': [[driver_name or '']],
+                    })
                 if '사번' in col_idx:
-                    worksheet.update_cell(i, col_idx['사번'] + 1, str(employee_id or ''))
+                    updates.append({
+                        'range': rowcol_to_a1(i, col_idx['사번'] + 1),
+                        'values': [[str(employee_id or '')]],
+                    })
+                if updates:
+                    worksheet.batch_update(updates, value_input_option='USER_ENTERED')
                 return True
         return False
     except Exception as e:
@@ -1058,7 +1151,7 @@ def reset_loaner_vehicle_on_work_end(vehicle_number, employee_id):
     차량번호·사번이 대차 신청 직후 기록과 일치하고 대차가능이 'X'인 행만 갱신한다."""
     try:
         worksheet = get_worksheet(LOANER_SHEET_NAME)
-        all_values = worksheet.get_all_values()
+        all_values = worksheet.get_values(LOANER_DB_READ_RANGE)
         if not all_values or len(all_values) < 2:
             return False
         header = [str(h).strip() for h in all_values[0]]
@@ -1072,6 +1165,7 @@ def reset_loaner_vehicle_on_work_end(vehicle_number, employee_id):
         eid = str(employee_id or '').strip()
         if not vn_norm or not eid:
             return False
+        from gspread.utils import rowcol_to_a1
         for i, row in enumerate(all_values[1:], start=2):
             if len(row) <= max(num_col, sabun_col, avail_col):
                 continue
@@ -1082,13 +1176,28 @@ def reset_loaner_vehicle_on_work_end(vehicle_number, employee_id):
             cur = str(row[avail_col]).strip().upper()
             if cur != 'X':
                 continue
-            worksheet.update_cell(i, avail_col + 1, 'O')
+            updates = [
+                {
+                    'range': rowcol_to_a1(i, avail_col + 1),
+                    'values': [['O']],
+                }
+            ]
             if '대차신청일' in col_idx:
-                worksheet.update_cell(i, col_idx['대차신청일'] + 1, '')
+                updates.append({
+                    'range': rowcol_to_a1(i, col_idx['대차신청일'] + 1),
+                    'values': [['']],
+                })
             if '대차사용자' in col_idx:
-                worksheet.update_cell(i, col_idx['대차사용자'] + 1, '')
+                updates.append({
+                    'range': rowcol_to_a1(i, col_idx['대차사용자'] + 1),
+                    'values': [['']],
+                })
             if '사번' in col_idx:
-                worksheet.update_cell(i, col_idx['사번'] + 1, '')
+                updates.append({
+                    'range': rowcol_to_a1(i, col_idx['사번'] + 1),
+                    'values': [['']],
+                })
+            worksheet.batch_update(updates, value_input_option='USER_ENTERED')
             return True
         return False
     except Exception as e:
@@ -1101,7 +1210,7 @@ def update_work_cell_note_report(employee_id, month_sheet_name, day, report_valu
     같은 사번이 야간/주간 등 여러 행일 수 있으므로, 해당일 메모에 '운행시작일시'가 있는 행(실제 근무 시작된 행)을 찾아 그 셀만 수정한다."""
     try:
         worksheet = get_worksheet(month_sheet_name)
-        all_values = worksheet.get_all_values()
+        all_values = worksheet.get_values(WORK_DB_READ_RANGE)
         if not all_values:
             return False
         header = [str(h).strip() for h in all_values[0]]
@@ -1208,7 +1317,7 @@ def get_today_replacement_display(employee_id, month_sheet_name, day, work_start
         if not num:
             return None
         ws = get_worksheet(LOANER_SHEET_NAME)
-        all_values = ws.get_all_values()
+        all_values = ws.get_values(LOANER_DB_READ_RANGE)
         if not all_values or len(all_values) < 2:
             return (num, '')
         header = [str(h).strip() for h in all_values[0]]
@@ -1225,3 +1334,232 @@ def get_today_replacement_display(employee_id, month_sheet_name, day, work_start
     except Exception as e:
         print(f"Error get_today_replacement_display: {e}")
         return None
+
+
+# ----- 휴가신청 (work_DB_2026 동일 스프레드시트 내 시트) -----
+LEAVE_REQUEST_SHEET_NAME = '휴가신청'
+LEAVE_REQUEST_READ_RANGE = 'A:I'
+
+
+def _parse_sheet_date_value(val):
+    """시트 날짜 셀을 date로 변환 (실패 시 None)."""
+    if val is None:
+        return None
+    s = str(val).strip().replace('-', '/')
+    if not s:
+        return None
+    try:
+        base = s[:10] if len(s) >= 10 else s
+        return datetime.strptime(base, '%Y/%m/%d').date()
+    except (ValueError, TypeError):
+        return None
+
+
+def _format_yy_mm_dd(val):
+    """표시용 YY/MM/DD."""
+    d = _parse_sheet_date_value(val)
+    if d:
+        return f'{d.year % 100:02d}/{d.month:02d}/{d.day:02d}'
+    return str(val).strip() if val is not None else ''
+
+
+def _leave_status_bucket(raw):
+    """승인상태 원본 → pending | approved | rejected (/·o·x 및 O·X 허용)."""
+    s = str(raw).strip().lower()
+    if s in ('/', '／', '', '대기'):
+        return 'pending'
+    if s in ('o', '〇'):
+        return 'approved'
+    if s in ('x',):
+        return 'rejected'
+    up = str(raw).strip().upper()
+    if up == 'O':
+        return 'approved'
+    if up == 'X':
+        return 'rejected'
+    return 'pending'
+
+
+def _safe_int_days(val):
+    try:
+        return max(0, int(float(str(val).strip().replace(',', ''))))
+    except (ValueError, TypeError):
+        return 0
+
+
+def get_user_annual_leave_entitlement(user_record):
+    """accounts 행(dict)에서 근속연차 일수 조회."""
+    if not user_record:
+        return 0
+    raw = user_record.get('근속연차')
+    try:
+        if raw is None or str(raw).strip() == '':
+            return 0
+        return max(0, int(float(str(raw).strip())))
+    except (ValueError, TypeError):
+        return 0
+
+
+def sum_approved_leave_days_for_employee(employee_id):
+    """승인된 휴가(o/O) 기간 합계."""
+    try:
+        ws = get_worksheet(LEAVE_REQUEST_SHEET_NAME)
+        rows = ws.get_values(LEAVE_REQUEST_READ_RANGE)
+        if not rows or len(rows) < 2:
+            return 0
+        header = [str(h).strip() for h in rows[0]]
+        try:
+            idx_eid = header.index('사번')
+            idx_duration = header.index('기간')
+            idx_status = header.index('승인상태')
+        except ValueError:
+            return 0
+        target = str(employee_id).strip()
+        total = 0
+        for row in rows[1:]:
+            if len(row) <= max(idx_eid, idx_duration, idx_status):
+                continue
+            if str(row[idx_eid]).strip() != target:
+                continue
+            if _leave_status_bucket(row[idx_status]) != 'approved':
+                continue
+            total += _safe_int_days(row[idx_duration])
+        return total
+    except Exception as e:
+        print(f'Error sum_approved_leave_days_for_employee: {e}')
+        return 0
+
+
+def get_leave_requests_for_display(employee_id):
+    """로그인 사번 기준 휴가 신청 목록 (신청일 내림차순)."""
+    try:
+        ws = get_worksheet(LEAVE_REQUEST_SHEET_NAME)
+        rows = ws.get_values(LEAVE_REQUEST_READ_RANGE)
+        if not rows or len(rows) < 2:
+            return []
+        header = [str(h).strip() for h in rows[0]]
+        try:
+            idx_eid = header.index('사번')
+            idx_apply = header.index('신청일')
+            idx_start = header.index('시작일')
+            idx_end = header.index('종료일')
+            idx_name = header.index('이름')
+            idx_duration = header.index('기간')
+            idx_reason = header.index('사유')
+            idx_status = header.index('승인상태')
+        except ValueError:
+            return []
+
+        target = str(employee_id).strip()
+        items = []
+        for row in rows[1:]:
+            if len(row) <= idx_eid:
+                continue
+            if str(row[idx_eid]).strip() != target:
+                continue
+            raw_apply = row[idx_apply] if len(row) > idx_apply else ''
+            raw_status = row[idx_status] if len(row) > idx_status else ''
+            bucket = _leave_status_bucket(raw_status)
+            label = {'pending': '대기', 'approved': '승인', 'rejected': '반려'}.get(bucket, '대기')
+            dur = _safe_int_days(row[idx_duration]) if len(row) > idx_duration else 0
+            sort_key = _parse_sheet_date_value(raw_apply) or date.min
+            items.append({
+                'apply_disp': _format_yy_mm_dd(raw_apply),
+                'start_disp': _format_yy_mm_dd(row[idx_start]) if len(row) > idx_start else '',
+                'end_disp': _format_yy_mm_dd(row[idx_end]) if len(row) > idx_end else '',
+                'duration': dur,
+                'status_label': label,
+                'status_kind': bucket,
+                'apply_raw': str(raw_apply).strip(),
+                'start_raw': str(row[idx_start]).strip() if len(row) > idx_start else '',
+                'end_raw': str(row[idx_end]).strip() if len(row) > idx_end else '',
+                'name': str(row[idx_name]).strip() if len(row) > idx_name else '',
+                'employee_id': target,
+                'reason': str(row[idx_reason]).strip() if len(row) > idx_reason else '',
+                '_sort': sort_key,
+            })
+
+        items.sort(key=lambda x: x['_sort'], reverse=True)
+        for it in items:
+            it.pop('_sort', None)
+        return items
+    except Exception as e:
+        print(f'Error get_leave_requests_for_display: {e}')
+        return []
+
+
+def append_leave_request_row(apply_date_str, employee_id, name, start_date_str, end_date_str, duration_days, reason_text):
+    """휴가신청 시트에 한 행 추가. 승인상태는 '/'(대기). 구분은 빈 칸."""
+    try:
+        ws = get_worksheet(LEAVE_REQUEST_SHEET_NAME)
+        header = [str(h).strip() for h in ws.row_values(1)]
+        if not header:
+            return False
+        payload = {
+            '신청일': apply_date_str,
+            '사번': str(employee_id).strip(),
+            '이름': (name or '').strip(),
+            '시작일': start_date_str,
+            '종료일': end_date_str,
+            '기간': duration_days,
+            '구분': '',
+            '사유': (reason_text or '').strip(),
+            '승인상태': '/',
+        }
+        row_out = [payload.get(h, '') for h in header]
+        ws.append_row(row_out, value_input_option='USER_ENTERED')
+        return True
+    except Exception as e:
+        print(f'Error append_leave_request_row: {e}')
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def delete_pending_leave_request_row(employee_id, name, apply_date_str, start_date_str, end_date_str):
+    """휴가신청 시트에서 대기('/') 상태의 신청 1건 행 삭제."""
+    try:
+        ws = get_worksheet(LEAVE_REQUEST_SHEET_NAME)
+        rows = ws.get_values(LEAVE_REQUEST_READ_RANGE)
+        if not rows or len(rows) < 2:
+            return False
+        header = [str(h).strip() for h in rows[0]]
+        try:
+            idx_apply = header.index('신청일')
+            idx_eid = header.index('사번')
+            idx_name = header.index('이름')
+            idx_start = header.index('시작일')
+            idx_end = header.index('종료일')
+            idx_status = header.index('승인상태')
+        except ValueError:
+            return False
+
+        target_eid = str(employee_id).strip()
+        target_name = str(name or '').strip()
+        target_apply = str(apply_date_str or '').strip()
+        target_start = str(start_date_str or '').strip()
+        target_end = str(end_date_str or '').strip()
+
+        for i, row in enumerate(rows[1:], start=2):
+            if len(row) <= max(idx_apply, idx_eid, idx_name, idx_start, idx_end, idx_status):
+                continue
+            if str(row[idx_eid]).strip() != target_eid:
+                continue
+            if target_name and str(row[idx_name]).strip() != target_name:
+                continue
+            if str(row[idx_apply]).strip() != target_apply:
+                continue
+            if str(row[idx_start]).strip() != target_start:
+                continue
+            if str(row[idx_end]).strip() != target_end:
+                continue
+            if _leave_status_bucket(row[idx_status]) != 'pending':
+                continue
+            ws.delete_rows(i)
+            return True
+        return False
+    except Exception as e:
+        print(f'Error delete_pending_leave_request_row: {e}')
+        import traceback
+        traceback.print_exc()
+        return False

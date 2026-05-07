@@ -10,6 +10,11 @@ SPREADSHEET_ID = "1mjQTR8FKMnbszfi0ci0w7AyF5Yc41PmQ1OQH-7aCDIw"
 # Sales DB 스프레드시트 설정
 SALES_SPREADSHEET_NAME = "sales_DB_2026"
 SALES_SPREADSHEET_ID = "1cWRAktg_LWV4cJ0wesDDEltYo6GQ0yOlhwMSVihjY9M"
+# 공지사항 폴더 ID → 드라이브 브라우저 주소 `.../folders/여기` 의 [여기] 전체(따옴표만 제외하고 그대로)
+# 우선순위: 환경 변수 NOTICE_DRIVE_FOLDER_ID → 아래 문자열 따옴표 안
+NOTICE_DRIVE_FOLDER_ID = (
+    os.environ.get('NOTICE_DRIVE_FOLDER_ID') or '1uq1SAN_HYkqzunMlvbMXCKJYZRyhqw4P'
+).strip()
 
 # Google API 인증 정보
 # 환경 변수 GOOGLE_CREDENTIALS가 있으면 사용, 없으면 파일에서 읽기

@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}휴가신청 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="replacement-apply-container leave-request-page">
+    <div class="replacement-apply-header">
+        <a href="{{ url_for('main_dashboard') }}" class="back-button">‹</a>
+        <h1>휴가신청</h1>
+    </div>
+
+    <div class="replacement-apply-box">
+        <div class="leave-request-summary">
+            근속 연차: <strong class="leave-request-remain">{{ remaining_leave_days }}</strong>
+            <span class="leave-request-summary-sep">/</span>
+            <strong>{{ entitlement }}</strong>일
+        </div>
+
+        <div class="leave-request-table-wrap">
+            <table class="leave-request-table">
+                <thead>
+                    <tr>
+                        <th>신청일</th>
+                        <th>시작일</th>
+                        <th>종료일</th>
+                        <th>상태</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if leave_rows %}
+                        {% for row in leave_rows %}
+                        <tr class="{% if row.status_kind == 'pending' %}leave-row-clickable{% endif %}"
+                            {% if row.status_kind == 'pending' %}
+                            data-cancelable="1"
+                            data-apply="{{ row.apply_raw|e }}"
+                            data-start="{{ row.start_raw|e }}"
+                            data-end="{{ row.end_raw|e }}"
+                            data-name="{{ row.name|e }}"
+                            data-employee="{{ row.employee_id|e }}"
+                            data-reason="{{ row.reason|e }}"
+                            data-duration="{{ row.duration }}"
+                            {% endif %}>
+                            <td>{{ row.apply_disp }}</td>
+                            <td>{{ row.start_disp }}</td>
+                            <td>{{ row.end_disp }}</td>
+                            <td>
+                                <span class="leave-status leave-status--{{ row.status_kind }}">{{ row.status_label }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="4" class="leave-request-empty">신청 내역이 없습니다.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <a href="{{ url_for('leave_request_new') }}" class="btn btn-primary btn-block leave-request-primary-btn">신청서 작성</a>
+    </div>
+</div>
+
+<div id="leaveCancelModal" class="modal-overlay leave-cancel-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="leaveCancelModalTitle">
+    <div class="modal-content leave-cancel-modal-content">
+        <div class="leave-cancel-modal-header">
+            <h3 id="leaveCancelModalTitle">휴가신청서</h3>
+            <button type="button" id="leaveCancelCloseBtn" class="leave-cancel-close" aria-label="닫기">×</button>
+        </div>
+        <div class="modal-body leave-cancel-modal-body">
+            <div class="leave-modal-period">
+                <span>휴가기간</span>
+                <strong>총 <span id="modalDuration">0</span>일</strong>
+            </div>
+            <div class="leave-modal-period-range"><span id="modalStartDate"></span> ~ <span id="modalEndDate"></span></div>
+
+            <div class="leave-modal-item">
+                <span class="leave-modal-label">신청일</span>
+                <strong id="modalApplyDate"></strong>
+            </div>
+            <div class="leave-modal-item">
+                <span class="leave-modal-label">이름</span>
+                <strong id="modalName"></strong>
+            </div>
+            <div class="leave-modal-item">
+                <span class="leave-modal-label">사번</span>
+                <strong id="modalEmployee"></strong>
+            </div>
+            <div class="leave-modal-item">
+                <span class="leave-modal-label">사유</span>
+                <strong id="modalReason"></strong>
+            </div>
+        </div>
+        <div class="modal-footer leave-cancel-modal-footer">
+            <form id="leaveCancelForm" method="POST" action="{{ url_for('leave_request_cancel') }}">
+                <input type="hidden" name="apply_date" id="cancelApplyDate">
+                <input type="hidden" name="start_date" id="cancelStartDate">
+                <input type="hidden" name="end_date" id="cancelEndDate">
+                <input type="hidden" name="name" id="cancelName">
+                <button type="submit" id="leaveCancelSubmitBtn" class="btn leave-cancel-submit-btn">신청 취소</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    var modal = document.getElementById('leaveCancelModal');
+    if (!modal) return;
+    var closeBtn = document.getElementById('leaveCancelCloseBtn');
+    var cancelForm = document.getElementById('leaveCancelForm');
+    var submitBtn = document.getElementById('leaveCancelSubmitBtn');
+    var body = document.body;
+
+    function setText(id, value) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = value || '';
+    }
+
+    function openModal(data) {
+        setText('modalDuration', data.duration || '0');
+        setText('modalStartDate', data.start || '');
+        setText('modalEndDate', data.end || '');
+        setText('modalApplyDate', data.apply || '');
+        setText('modalName', data.name || '');
+        setText('modalEmployee', data.employee || '');
+        setText('modalReason', data.reason || '');
+
+        document.getElementById('cancelApplyDate').value = data.apply || '';
+        document.getElementById('cancelStartDate').value = data.start || '';
+        document.getElementById('cancelEndDate').value = data.end || '';
+        document.getElementById('cancelName').value = data.name || '';
+
+        submitBtn.disabled = false;
+        submitBtn.textContent = '신청 취소';
+        modal.style.display = 'flex';
+        body.classList.add('modal-open');
+    }
+
+    function closeModal() {
+        modal.style.display = 'none';
+        body.classList.remove('modal-open');
+    }
+
+    var rows = document.querySelectorAll('tr[data-cancelable="1"]');
+    rows.forEach(function(row) {
+        row.addEventListener('click', function() {
+            openModal({
+                apply: row.getAttribute('data-apply'),
+                start: row.getAttribute('data-start'),
+                end: row.getAttribute('data-end'),
+                name: row.getAttribute('data-name'),
+                employee: row.getAttribute('data-employee'),
+                reason: row.getAttribute('data-reason'),
+                duration: row.getAttribute('data-duration')
+            });
+        });
+    });
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) closeModal();
+    });
+
+    cancelForm.addEventListener('submit', function() {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '처리 중...';
+    });
+})();
+</script>
+{% endblock %}

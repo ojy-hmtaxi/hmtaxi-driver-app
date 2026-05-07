@@ -3,13 +3,13 @@
 {% block title %}근무준비 - 근무 관리 시스템{% endblock %}
 
 {% block extra_head %}
-<link rel="prefetch" href="{{ url_for('calendar_view') }}">
+<link rel="prefetch" href="{{ url_for('main_dashboard') }}">
 {% endblock %}
 
 {% block content %}
 <div class="work-prepare-container">
     <div class="work-prepare-header">
-        <a href="{{ url_for('calendar_view') }}" class="back-button">‹</a>
+        <a href="{{ url_for('main_dashboard') }}" class="back-button">‹</a>
         <h1>근무준비</h1>
     </div>
     
@@ -44,7 +44,7 @@
             </div>
             
             <div class="form-group">
-                <div class="form-group-label" id="workStartDateTimeLabel">운행시작일시</div>
+                <div class="form-group-label" id="workStartDateTimeLabel">근무시작일시</div>
                 <div class="date-display" role="status" aria-labelledby="workStartDateTimeLabel">{{ work_datetime_display }}</div>
                 <div class="work-type-toggle">
                     <input type="radio" id="work_type_day" name="work_type" value="주간" {% if work_type_from_sheet == '주간' %}checked{% endif %} disabled>
@@ -65,7 +65,7 @@
                 <input type="hidden" name="work_type" value="{{ work_type_from_sheet }}">
             </div>
             
-            <fieldset class="form-group vehicle-condition-group">
+            <!-- TODO(restore): <fieldset class="form-group vehicle-condition-group">
                 <legend>차량상태 <span class="required">*</span></legend>
                 <div class="vehicle-status-toggle">
                     <input type="radio" id="vehicle_good" name="vehicle_condition" value="정상" checked>
@@ -91,10 +91,14 @@
                           name="special_notes" 
                           rows="3" 
                           placeholder="보고사항을 입력하세요"></textarea>
-            </div>
+            </div> -->
 
             <div class="warning-message">
-                ※ 완료 후, 개인 수정 불가합니다.
+                ※ 정보를 확인 후, 근무시작 버튼을 눌러주세요.
+                <br>
+                ※ 근무 중에는 근무 정보 변경이 불가합니다.
+                <br>
+                ※ 추가 정보 변경은 관리자에게 문의해 주세요.
             </div>
             
             <button type="submit" class="btn btn-primary btn-block btn-large btn-work-start">근무시작</button>
@@ -108,14 +112,14 @@
 document.addEventListener('DOMContentLoaded', function() {
     // 근무유형 토글은 읽기 전용이므로 클릭 이벤트 제거
     
-    // 상태 버튼 스타일 업데이트
-    const statusButtons = document.querySelectorAll('.status-btn');
-    statusButtons.forEach(btn => {
-        btn.addEventListener('click', function() {
-            statusButtons.forEach(b => b.classList.remove('status-active'));
-            this.classList.add('status-active');
-        });
-    });
+    // TODO(restore): 임시 비활성화 - 차량상태 UI 숨김에 따라 상태 버튼 JS도 미사용
+    // const statusButtons = document.querySelectorAll('.status-btn');
+    // statusButtons.forEach(btn => {
+    //     btn.addEventListener('click', function() {
+    //         statusButtons.forEach(b => b.classList.remove('status-active'));
+    //         this.classList.add('status-active');
+    //     });
+    // });
     
     // 날짜 선택 기능
     const dateMinusBtn = document.getElementById('dateMinusBtn');

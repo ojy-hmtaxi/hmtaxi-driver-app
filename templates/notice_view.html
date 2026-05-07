@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}공지사항 보기 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+{% set pdf_url = url_for('notice_file_proxy', file_id=notice.file_id, t=pdf_token) %}
+<div class="replacement-apply-container notice-page">
+    <div class="replacement-apply-header">
+        <a href="{{ url_for('notice_list') }}" class="back-button">‹</a>
+        <h1>공지사항</h1>
+    </div>
+
+    <div class="replacement-apply-box notice-view-box">
+        <div class="notice-meta-box">
+            <div class="notice-meta-item"><strong>제목:</strong> {{ notice.title }}</div>
+            <div class="notice-meta-item"><strong>게시일:</strong> {{ notice.posted_date }}</div>
+        </div>
+
+        <!-- <p class="notice-pdf-open-tab-wrap">
+            <a class="notice-pdf-open-tab" href="{{ pdf_url }}" target="_blank" rel="noopener">PDF 새 탭에서 열기</a>
+        </p> -->
+
+        <div class="notice-viewer-wrap">
+            <div class="notice-viewer-frame">
+                {# 모바일 Safari는 iframe 내 PDF 렌더가 비는 경우가 있어 object 우선 #}
+                <object
+                    class="notice-pdf-object"
+                    data="{{ pdf_url }}"
+                    type="application/pdf"
+                    aria-label="공지 PDF"
+                >
+                    <iframe
+                        class="notice-pdf-iframe"
+                        src="{{ pdf_url }}"
+                        title="공지 PDF 뷰어"
+                    ></iframe>
+                </object>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

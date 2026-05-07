@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}공지사항 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="replacement-apply-container notice-page">
+    <div class="replacement-apply-header">
+        <a href="{{ url_for('main_dashboard') }}" class="back-button">‹</a>
+        <h1>공지사항</h1>
+    </div>
+
+    <div class="replacement-apply-box">
+        <div class="leave-request-table-wrap">
+            <table class="leave-request-table notice-table">
+                <thead>
+                    <tr>
+                        <th>번호</th>
+                        <th>제목</th>
+                        <th>작성일</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if notices %}
+                        {% for item in notices %}
+                        <tr class="notice-row"
+                            tabindex="0"
+                            data-notice-url="{{ url_for('notice_view', file_id=item.file_id) }}">
+                            <td>{{ item.number_disp }}</td>
+                            <td class="notice-title-cell" title="{{ item.title }}">{{ item.title_disp }}</td>
+                            <td class="notice-date-cell">{{ item.posted_date_short }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="3" class="leave-request-empty">등록된 공지 PDF가 없습니다.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  document.querySelectorAll('.notice-table .notice-row[data-notice-url]').forEach(function (row) {
+    function go() {
+      var u = row.getAttribute('data-notice-url');
+      if (u) window.location.href = u;
+    }
+    row.addEventListener('click', go);
+    row.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        go();
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

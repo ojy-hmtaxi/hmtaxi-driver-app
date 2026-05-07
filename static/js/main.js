@@ -7,6 +7,11 @@ const LoadingManager = {
     overlay: null,
     container: null,
     isActive: false,
+    progressEl: null,
+    progressRaf: null,
+    progressStartMs: 0,
+    /** 0→100% 카운트 표시에 걸리는 시간(ms). 페이지 전환이 빠르면 hide()에서 100%로 마무리 */
+    progressDurationMs: 3000,
     
     /**
      * 초기화
@@ -44,6 +49,7 @@ const LoadingManager = {
         
         // 스피너 애니메이션 강제 시작
         this.ensureAnimation();
+        this.startProgressPercent();
     },
     
     /**
@@ -51,6 +57,8 @@ const LoadingManager = {
      */
     hide() {
         if (!this.overlay) return;
+        
+        this.finishProgressPercent();
         
         // 오버레이 숨김
         if (this.isActive) {
@@ -61,8 +69,68 @@ const LoadingManager = {
             if (this.overlay) {
                 this.overlay.style.display = 'none';
             }
+            const pe = document.getElementById('loadingProgressPercent');
+            if (pe) {
+                pe.textContent = '0%';
+            }
             this.isActive = false;
         }, 300);
+    },
+    
+    /**
+     * 로딩 스피너 위 퍼센트 0→100 애니메이션
+     */
+    startProgressPercent() {
+        this.stopProgressPercent(false);
+        this.progressEl = document.getElementById('loadingProgressPercent');
+        if (!this.progressEl) return;
+        this.progressStartMs = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        if (this.progressEl) {
+            this.progressEl.textContent = '0%';
+        }
+        const step = () => {
+            if (!this.isActive || !this.progressEl) return;
+            const now = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            const t = Math.min(1, (now - this.progressStartMs) / this.progressDurationMs);
+            const pct = Math.min(100, Math.floor(t * 100));
+            this.progressEl.textContent = pct + '%';
+            if (pct < 100 && this.isActive) {
+                this.progressRaf = requestAnimationFrame(step);
+            }
+        };
+        this.progressRaf = requestAnimationFrame(step);
+    },
+    
+    /**
+     * @param {boolean} resetText - 요소 텍스트를 0%로 초기화할지
+     */
+    stopProgressPercent(resetText) {
+        if (this.progressRaf) {
+            cancelAnimationFrame(this.progressRaf);
+            this.progressRaf = null;
+        }
+        if (resetText && this.progressEl) {
+            this.progressEl.textContent = '0%';
+        }
+        if (resetText) {
+            this.progressEl = null;
+        }
+    },
+    
+    finishProgressPercent() {
+        if (this.progressRaf) {
+            cancelAnimationFrame(this.progressRaf);
+            this.progressRaf = null;
+        }
+        const el = this.progressEl || document.getElementById('loadingProgressPercent');
+        if (el) {
+            el.textContent = '100%';
+        }
+        this.progressEl = null;
     },
     
     /**

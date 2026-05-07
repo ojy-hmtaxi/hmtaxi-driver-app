@@ -19,10 +19,13 @@
     <!-- 로딩 오버레이 및 스피너 -->
     <div id="loadingOverlay" class="loading-overlay" style="display: none;">
         <div class="loading-content">
-            <img src="{{ url_for('static', filename='images/progress_spinner.png') }}" 
-                 alt="로딩 중" 
-                 class="progress-spinner-image" 
-                 id="progressSpinnerImage">
+            <div class="loading-spinner-stack">
+                <div class="loading-progress-percent" id="loadingProgressPercent" aria-live="polite" aria-atomic="true">0%</div>
+                <img src="{{ url_for('static', filename='images/progress_spinner.png') }}" 
+                     alt="로딩 중" 
+                     class="progress-spinner-image" 
+                     id="progressSpinnerImage">
+            </div>
             <div class="loading-message">로딩 중 입니다.<br>잠시만 기다려 주세요.</div>
         </div>
     </div>

@@ -27,10 +27,10 @@
             <thead>
                 <tr>
                     <th>월</th>
-                    <th>근무일수</th>
-                    <th>결근일수</th>
+                    <th>근무일</th>
+                    <th>결근일</th>
                     <th>예정일수</th>
-                    <th>휴무일수</th>
+                    <th>휴가</th>
                     <th>합계</th>
                 </tr>
             </thead>
@@ -66,13 +66,13 @@ const chart = new Chart(ctx, {
     data: {
         labels: {{ chart_data.months | tojson }},
         datasets: [{
-            label: '근무일수',
+            label: '근무일',
             data: {{ chart_data.work_days | tojson }},
             backgroundColor: 'rgba(54, 162, 235, 0.5)',
             borderColor: 'rgba(54, 162, 235, 1)',
             borderWidth: 1
         }, {
-            label: '결근일수',
+            label: '결근일',
             data: {{ chart_data.absent_days | tojson }},
             backgroundColor: 'rgba(255, 99, 132, 0.5)',
             borderColor: 'rgba(255, 99, 132, 1)',
@@ -84,7 +84,7 @@ const chart = new Chart(ctx, {
             borderColor: 'rgba(23, 162, 184, 1)',
             borderWidth: 1
         }, {
-            label: '휴무일수',
+            label: '휴가',
             data: {{ chart_data.holiday_days | tojson }},
             backgroundColor: 'rgba(255, 193, 7, 0.5)',
             borderColor: 'rgba(255, 193, 7, 1)',

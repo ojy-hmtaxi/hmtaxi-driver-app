@@ -3,7 +3,7 @@
 {% block title %}근무응원 - 근무 관리 시스템{% endblock %}
 
 {% block extra_head %}
-<link rel="prefetch" href="{{ url_for('calendar_view', year=year, month=month) }}">
+<link rel="prefetch" href="{{ url_for('main_dashboard') }}">
 {% endblock %}
 
 {% block content %}
@@ -35,7 +35,7 @@
 {% block extra_scripts %}
 <script>
 (function() {
-    var url = "{{ url_for('calendar_view', year=year, month=month) }}";
+    var url = "{{ url_for('main_dashboard') }}";
 
     // 브라우저에 다음 페이지를 미리 받아오도록 힌트
     var link = document.createElement('link');

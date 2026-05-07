@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}휴가신청 작성 - 근무 관리 시스템{% endblock %}
+
+{% block content %}
+<div class="replacement-apply-container leave-request-page">
+    <div class="replacement-apply-header">
+        <a href="{{ url_for('leave_request') }}" class="back-button">‹</a>
+        <h1>휴가신청</h1>
+    </div>
+
+    <div class="replacement-apply-box">
+        <form method="POST" action="{{ url_for('leave_request_new') }}" class="leave-request-form" id="leaveRequestForm">
+            <div class="form-group">
+                <div class="form-group-label" id="leavePeriodLabel">휴가 기간</div>
+                <div class="leave-total-badge" id="leaveTotalBadge" aria-live="polite">총 <span id="leaveTotalDays">1</span>일</div>
+                <div class="leave-period-row" role="group" aria-labelledby="leavePeriodLabel">
+                    <input type="date" name="start_date" id="leaveStartDate" class="form-control leave-date-input"
+                           value="{{ default_start_iso }}" required aria-label="시작일">
+                    <span class="leave-period-sep">~</span>
+                    <input type="date" name="end_date" id="leaveEndDate" class="form-control leave-date-input"
+                           value="{{ default_end_iso }}" required aria-label="종료일">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="leaveApplyDateDisplay">신청일</label>
+                <input type="text" id="leaveApplyDateDisplay" class="form-control leave-readonly" value="{{ apply_date_display }}" readonly tabindex="-1">
+            </div>
+
+            <div class="form-group">
+                <label for="leaveUserName">이름</label>
+                <input type="text" id="leaveUserName" class="form-control leave-readonly" value="{{ user_name }}" readonly tabindex="-1">
+            </div>
+
+            <div class="form-group">
+                <label for="leaveEmployeeId">사번</label>
+                <input type="text" id="leaveEmployeeId" class="form-control leave-readonly" value="{{ employee_id }}" readonly tabindex="-1">
+            </div>
+
+            <div class="form-group">
+                <label for="leaveReason">사유</label>
+                <textarea id="leaveReason" name="reason" class="form-control leave-reason" rows="4" placeholder="사유를 입력하세요" required></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block leave-request-primary-btn">신청서 제출</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    var startEl = document.getElementById('leaveStartDate');
+    var endEl = document.getElementById('leaveEndDate');
+    var outEl = document.getElementById('leaveTotalDays');
+    function inclusiveDays(a, b) {
+        if (!a || !b) return null;
+        var da = new Date(a + 'T12:00:00');
+        var db = new Date(b + 'T12:00:00');
+        if (isNaN(da.getTime()) || isNaN(db.getTime())) return null;
+        if (db < da) return null;
+        return Math.round((db - da) / 86400000) + 1;
+    }
+    function updateTotal() {
+        var n = inclusiveDays(startEl.value, endEl.value);
+        if (n === null) {
+            outEl.textContent = '—';
+            return;
+        }
+        outEl.textContent = String(n);
+    }
+    startEl.addEventListener('change', function() {
+        if (endEl.value && endEl.value < startEl.value) {
+            endEl.value = startEl.value;
+        }
+        updateTotal();
+    });
+    endEl.addEventListener('change', updateTotal);
+    updateTotal();
+})();
+</script>
+{% endblock %}

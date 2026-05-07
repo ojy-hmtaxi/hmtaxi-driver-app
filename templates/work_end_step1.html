@@ -3,13 +3,13 @@
 {% block title %}근무종료 - 근무 관리 시스템{% endblock %}
 
 {% block extra_head %}
-<link rel="prefetch" href="{{ url_for('calendar_view') }}">
+<link rel="prefetch" href="{{ url_for('main_dashboard') }}">
 {% endblock %}
 
 {% block content %}
 <div class="work-prepare-container">
     <div class="work-prepare-header">
-        <a href="{{ url_for('calendar_view') }}" class="back-button">‹</a>
+        <a href="{{ url_for('main_dashboard') }}" class="back-button">‹</a>
         <h1>근무종료</h1>
     </div>
     
@@ -53,7 +53,7 @@
             </div>
             
             <fieldset class="form-group">
-                <legend>사고유무 <span class="required">*</span></legend>
+                <legend>사고유무 <span class="required">*필수 선택</span></legend>
                 <div class="vehicle-status-toggle">
                     <input type="radio" id="accident_none" name="accident_status" value="무사고" required>
                     <label for="accident_none" class="status-btn status-good">

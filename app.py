@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response, abort
 from datetime import datetime, date, timedelta, timezone
 from zoneinfo import ZoneInfo
 import calendar
@@ -7,7 +7,15 @@ import os
 import config
 import threading
 import time
+import io
+import re
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseDownload
+from google.oauth2.service_account import Credentials
+from itsdangerous import URLSafeTimedSerializer
 
 # 한국 시간대 설정
 KST = ZoneInfo("Asia/Seoul")
@@ -71,7 +79,164 @@ class SimpleCache:
 work_data_cache = SimpleCache(default_ttl=60)  # 근무 데이터는 60초 캐시
 sales_data_cache = SimpleCache(default_ttl=120)  # 매출 데이터는 120초 캐시
 work_start_info_cache = SimpleCache(default_ttl=60)  # 근무시작 정보(메모) 60초 캐시 → 캘린더 로딩 시 반복 호출 감소
+annual_stats_cache = SimpleCache(default_ttl=180)  # 메인 연간 통계 180초 캐시
+notice_cache = SimpleCache(default_ttl=120)  # 공지사항 목록 캐시
 from utils.auth import authenticate_user, change_password, check_default_password
+
+
+def invalidate_main_dashboard_stats_caches(employee_id):
+    """메인 통계용 메모리 캐시(work/sales/연간) 무효화.
+
+    매 요청마다 호출하면 Sheets 읽기가 폭증해 분당 한도(429)에 걸리기 쉽다.
+    기본 메인 진입에서는 호출하지 않고, 필요 시 `/main?fresh=1` 로만 실행한다."""
+    if employee_id is None:
+        return
+    eid = str(employee_id).strip()
+    if not eid:
+        return
+    work_data_cache.clear_pattern(f'work_data:{eid}:')
+    sales_data_cache.clear_pattern(f'sales_summary:{eid}:')
+    annual_stats_cache.clear_pattern(f'main_yearly:{eid}:')
+
+
+def get_google_api_credentials():
+    """Google API 공통 인증 객체."""
+    credentials_dict = config.get_google_credentials()
+    if credentials_dict:
+        return Credentials.from_service_account_info(credentials_dict, scopes=config.SCOPES)
+    if not os.path.exists(config.CREDENTIALS_FILE):
+        raise FileNotFoundError(
+            f"credentials.json 파일을 찾을 수 없습니다. ({config.CREDENTIALS_FILE})"
+        )
+    return Credentials.from_service_account_file(config.CREDENTIALS_FILE, scopes=config.SCOPES)
+
+
+def get_drive_service():
+    creds = get_google_api_credentials()
+    return build('drive', 'v3', credentials=creds, cache_discovery=False)
+
+
+def parse_notice_filename(raw_name):
+    """파일명 형식: 번호_제목_날짜(.pdf).
+
+    제목에 '_' 문자가 포함될 수 있으므로, 첫 토큰=번호·마지막 토큰=날짜(YYYY-MM-DD)·중간 연결=제목.
+    """
+    base = (raw_name or '').strip()
+    if base.lower().endswith('.pdf'):
+        base = base[:-4]
+    parts = [p.strip() for p in base.split('_') if str(p).strip() != '']
+    if len(parts) < 3:
+        return None
+    date_token = parts[-1]
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_token):
+        return None
+    num_raw = parts[0]
+    if not str(num_raw).strip().isdigit():
+        return None
+    title = '_'.join(parts[1:-1]).strip()
+    if not title:
+        return None
+    try:
+        n = int(str(num_raw).strip())
+        nr = str(num_raw).strip()
+        return {
+            'number': n,
+            'number_disp': nr.zfill(2) if nr.isdigit() else nr,
+            'title': title,
+            'posted_date': date_token,
+        }
+    except Exception:
+        return None
+
+
+def notice_title_for_list(title, max_len=24):
+    """목록용 제목 표시 문자열 (max_len 문자 초과 시 말줄임)."""
+    t = (title or '').strip()
+    if len(t) <= max_len:
+        return t
+    return t[:max_len] + '...'
+
+
+def notice_date_yy_mm_dd(iso_yyyy_mm_dd):
+    """yyyy-mm-dd → yy-mm-dd (목록용)."""
+    d = (iso_yyyy_mm_dd or '').strip()
+    if len(d) == 10 and d[4] == '-' and d[7] == '-' and re.match(r'^\d{4}-\d{2}-\d{2}$', d):
+        return d[2:]
+    return d
+
+
+def list_notice_pdfs():
+    """공지사항 폴더의 PDF 리스트 반환 (번호 내림차순)."""
+    folder_id = (config.NOTICE_DRIVE_FOLDER_ID or '').strip()
+    if not folder_id:
+        return []
+    cache_key = f'notice_list:v2:{folder_id}'
+    cached = notice_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    svc = get_drive_service()
+    query = (
+        f"'{folder_id}' in parents and mimeType='application/pdf' and trashed=false"
+    )
+    # orderBy 불일치로 API가 실패하면 목록 전체가 비는 경우가 있어,
+    # 정렬은 Python에서 처리한다.
+    resp = svc.files().list(
+        q=query,
+        fields='files(id,name,mimeType,parents,modifiedTime)',
+        pageSize=200,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute()
+    out = []
+    for f in resp.get('files', []):
+        parsed = parse_notice_filename(f.get('name', ''))
+        if not parsed:
+            continue
+        iso_date = parsed['posted_date']
+        full_title = parsed['title']
+        out.append({
+            'file_id': f['id'],
+            'file_name': f.get('name', ''),
+            'number': parsed['number'],
+            'number_disp': parsed['number_disp'],
+            'title': full_title,
+            'posted_date': iso_date,
+            'title_disp': notice_title_for_list(full_title),
+            'posted_date_short': notice_date_yy_mm_dd(iso_date),
+        })
+    out.sort(key=lambda x: x['number'], reverse=True)
+    notice_cache.set(cache_key, out)
+    return out
+
+
+def get_notice_file_meta(file_id):
+    """공지 폴더 소속 단일 파일 메타 조회."""
+    folder_id = (config.NOTICE_DRIVE_FOLDER_ID or '').strip()
+    if not folder_id:
+        return None
+    svc = get_drive_service()
+    meta = svc.files().get(
+        fileId=file_id,
+        fields='id,name,mimeType,parents,driveId',
+        supportsAllDrives=True,
+    ).execute()
+    if meta.get('mimeType') != 'application/pdf':
+        return None
+    parents = meta.get('parents') or []
+    if folder_id not in parents:
+        return None
+    parsed = parse_notice_filename(meta.get('name', ''))
+    if not parsed:
+        return None
+    return {
+        'file_id': meta['id'],
+        'file_name': meta.get('name', ''),
+        'number': parsed['number'],
+        'number_disp': parsed['number_disp'],
+        'title': parsed['title'],
+        'posted_date': parsed['posted_date'],
+    }
 from utils.google_sheets import (
     get_user_work_data, 
     get_all_user_work_data,
@@ -88,16 +253,40 @@ from utils.google_sheets import (
     update_work_cell_note_report,
     get_today_replacement_display,
     parse_replacement_vehicle_from_remark,
+    get_user_annual_leave_entitlement,
+    sum_approved_leave_days_for_employee,
+    get_leave_requests_for_display,
+    append_leave_request_row,
+    delete_pending_leave_request_row,
 )
 import pandas as pd
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
+_notice_pdf_signer = URLSafeTimedSerializer(app.secret_key, salt='notice-pdf-v1')
+
+
+def make_notice_pdf_token(file_id):
+    """모바일 iframe에서 세션 쿠키가 빠지는 경우 대비, 짧게 유효한 PDF URL용 토큰."""
+    return _notice_pdf_signer.dumps({'fid': file_id})
+
+
+def verify_notice_pdf_token(file_id, token):
+    if not token or not file_id:
+        return False
+    try:
+        data = _notice_pdf_signer.loads(token, max_age=60 * 45)
+        return isinstance(data, dict) and data.get('fid') == file_id
+    except Exception:
+        return False
+
 # 정적 파일 캐싱 최적화 및 동적 페이지 캐시 방지
 @app.after_request
 def after_request(response):
     """응답에 적절한 캐시 제어 헤더 추가"""
+    if response.mimetype == 'application/pdf' or request.endpoint == 'notice_file_proxy':
+        return response
     # 정적 파일(이미지, CSS, JS)은 캐싱 허용
     if request.endpoint and 'static' in request.endpoint:
         response.headers["Cache-Control"] = "public, max-age=3600"  # 1시간 캐싱
@@ -182,6 +371,28 @@ def get_work_start_info_with_fallback(employee_id, reference_date):
     # 시작 정보를 찾지 못한 경우 기본값 반환
     return info, reference_date, month_name, day
 
+
+def get_active_work_reference(employee_id, reference_date):
+    """진행 중인 운행 기준일(오늘/어제)을 반환.
+    - 근무시작 메모(운행시작일시)가 있고
+    - 해당 운행일의 매출 기록이 아직 없는
+    날짜를 우선 선택한다.
+    지각으로 익일 새벽에 시작한 경우에도, 실제 운행일(전날)을 찾기 위해 사용한다.
+    """
+    candidates = [reference_date, reference_date - timedelta(days=1)]
+    for target_date in candidates:
+        target_month_name = config.MONTHS[target_date.month - 1]
+        target_day = target_date.day
+        info = get_today_work_start_info_cached(employee_id, target_month_name, target_day)
+        if not (info and info.get('work_date')):
+            continue
+        operation_date = target_date.strftime('%Y/%m/%d')
+        if not has_sales_record_for_date_cached(employee_id, target_month_name, operation_date):
+            return info, target_date, target_month_name, target_day
+
+    # 조건에 맞는 진행 중 운행이 없으면 기존 폴백 사용
+    return get_work_start_info_with_fallback(employee_id, reference_date)
+
 @app.route('/')
 def index():
     """메인 페이지 - 로그인 페이지로 리다이렉트"""
@@ -212,7 +423,7 @@ def login():
             if error == "password_change_required":
                 return redirect(url_for('change_password_route'))
             
-            return redirect(url_for('calendar_view'))
+            return redirect(url_for('main_dashboard'))
         else:
             flash(error or '로그인에 실패했습니다.', 'error')
     
@@ -253,38 +464,75 @@ def change_password_route():
         
         if success:
             flash(message, 'success')
-            return redirect(url_for('calendar_view'))
+            return redirect(url_for('main_dashboard'))
         else:
             flash(message, 'error')
     
     return render_template('change_password.html')
 
-@app.route('/calendar')
-@require_login
-def calendar_view():
-    """캘린더 뷰 - 근무일정"""
-    employee_id = session.get('employee_id')
+
+def _to_int_safe(val):
+    try:
+        return int(str(val).strip())
+    except (ValueError, TypeError):
+        return 0
+
+
+def _get_sheet_metric(record, key):
+    """시트 숫자 컬럼 안전 파싱."""
+    if not record:
+        return 0
+    return _to_int_safe(record.get(key, 0))
+
+
+def get_main_yearly_stats(employee_id, reference_date):
+    """메인 연간 통계(결근·연차·가해사고) 계산.
+    - 1~12월 대상
+    - 월별 캐시(work_data/sales_summary)를 재사용
+    - 결과 자체도 단기 캐시하여 메인 재진입 비용 최소화"""
+    cache_key = f"main_yearly:{employee_id}:{reference_date.year}"
+    cached = annual_stats_cache.get(cache_key)
+    user_rec = get_user_by_id(employee_id)
+    entitlement = get_user_annual_leave_entitlement(user_rec)
+    used_approved = sum_approved_leave_days_for_employee(employee_id)
+    remaining_leave_days = max(0, entitlement - used_approved)
+    if cached is not None:
+        cached = dict(cached)
+        cached.update({
+            'annual_leave_entitlement': entitlement,
+            'annual_leave_remaining': remaining_leave_days,
+        })
+        return cached
+
+    # 연간 결근일수: 기존 월별 합산 함수(병렬 + 시트 1회 open + per-month 캐시) 재사용
+    aggregated = get_all_months_aggregated_data(
+        employee_id,
+        reference_date=reference_date,
+        recent_months=12,
+        work_data_cache=work_data_cache,
+    ) or {}
+    annual_absent_days = sum(_get_sheet_metric((v or {}), '결근일') for v in aggregated.values())
+
+    # 연간 가해사고: 월별 매출 요약 캐시를 병렬 수집 후 합산
+    def _month_accident(mn):
+        return _to_int_safe((get_user_sales_summary_cached(employee_id, mn) or {}).get('accident_count', 0))
+
+    with ThreadPoolExecutor(max_workers=min(8, len(config.MONTHS))) as ex:
+        annual_accident_count = sum(ex.map(_month_accident, config.MONTHS))
+
+    result = {
+        'annual_absent_days': annual_absent_days,
+        'annual_accident_count': annual_accident_count,
+        'annual_leave_entitlement': entitlement,
+        'annual_leave_remaining': remaining_leave_days,
+    }
+    annual_stats_cache.set(cache_key, result)
+    return result
+
+
+def build_calendar_template_context(employee_id, year, month, include_yearly_stats=False):
+    """캘린더 뷰와 메인 대시보드에서 공통으로 사용하는 템플릿 컨텍스트."""
     current_date = get_kst_now()
-    
-    # URL 파라미터에서 년/월 가져오기 (없으면 현재 월)
-    year_param = request.args.get('year', type=int)
-    month_param = request.args.get('month', type=int)
-    
-    if year_param and month_param:
-        year = year_param
-        month = month_param
-        # 유효성 검사
-        if month < 1:
-            month = 12
-            year -= 1
-        elif month > 12:
-            month = 1
-            year += 1
-    else:
-        year = current_date.year
-        month = current_date.month
-    
-    # 현재 월의 시트 이름
     month_name = config.MONTHS[month - 1]
     
     # 근무 데이터·매출 요약 병렬 로딩 (캘린더 첫 화면 응답 속도 개선)
@@ -337,21 +585,15 @@ def calendar_view():
                 work_status[day] = best_status
                 record_for_day[day] = best_record
     
-    # 근무일수·결근일수: work_DB G열·H열(같은 사번 모든 행 합산) — 시트 표시값과 일치
+    # 근무일·결근일·인정일: 같은 사번 모든 행 합산 (신규 시트명 우선)
     work_days = 0
     absent_days = 0
+    approved_days = 0
     if all_work_data:
         for rec in all_work_data:
-            try:
-                wv = rec.get('근무일수', '') or 0
-                work_days += int(wv) if str(wv).strip() != '' else 0
-            except (ValueError, TypeError):
-                pass
-            try:
-                av = rec.get('결근일수', '') or 0
-                absent_days += int(av) if str(av).strip() != '' else 0
-            except (ValueError, TypeError):
-                pass
+            work_days += _get_sheet_metric(rec, '근무일')
+            absent_days += _get_sheet_metric(rec, '결근일')
+            approved_days += _get_sheet_metric(rec, '인정일')
     
     # 오늘 날짜에 배정받은 차량번호와 차종 찾기
     today_vehicle = None
@@ -493,26 +735,21 @@ def calendar_view():
     total_fuel_cost = sales_summary.get('total_fuel_cost', 0)
     accident_count = sales_summary.get('accident_count', 0)
     
-    # 만근 기준 계산: 그 달의 총 일수 - (공휴일 + 일요일 - 공휴이면서 일요일인 날) <= (근무일 + 휴무일) - 결근일
+    # 휴가일: 신규 '휴가' 컬럼(I열) 우선, 없으면 일별 '/' 카운트 폴백
     total_days_in_month = calendar.monthrange(year, month)[1]  # 그 달의 총 일수
-    holiday_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == '/')  # 휴무일 개수
-    sunday_count = sum(1 for day in range(1, total_days_in_month + 1) if calendar.weekday(year, month, day) == 6)  # 일요일 개수 (0=월..6=일)
-    # 공휴일: 병합 결과(work_status)가 아닌, 해당 사번의 모든 행 중 그날 'H'가 하나라도 있으면 공휴일로 인정 (다른 행에서 O로 덮여도 만근 기준은 유지)
-    public_holiday_days_for_threshold = set()
+    vacation_days = 0
     if all_work_data:
-        for day in range(1, total_days_in_month + 1):
-            day_str = str(day)
-            for record in all_work_data:
-                if day_str in record:
-                    status_raw = str(record.get(day_str, '')).strip().upper()
-                    if status_raw == 'H':
-                        public_holiday_days_for_threshold.add(day)
-                        break
-    public_holiday_count = len(public_holiday_days_for_threshold)
-    public_holiday_and_sunday = sum(1 for day in public_holiday_days_for_threshold if calendar.weekday(year, month, day) == 6)
-    days_excluded = public_holiday_count + sunday_count - public_holiday_and_sunday
-    full_attendance_threshold = total_days_in_month - days_excluded  # 만근 기준
-    is_full_attendance = (work_days + holiday_days_count - absent_days) >= full_attendance_threshold  # (근무일+휴무일-결근일) >= 기준
+        for rec in all_work_data:
+            vacation_days += _to_int_safe(rec.get('휴가', 0))
+    if vacation_days == 0:
+        vacation_days = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == '/')
+
+    # 만근 기준: 인정일 기준 (일반월 26일 이상, 2월 24일 이상, 윤년 2월 25일 이상)
+    if month == 2:
+        full_attendance_threshold = 25 if calendar.isleap(year) else 24
+    else:
+        full_attendance_threshold = 26
+    is_full_attendance = approved_days >= full_attendance_threshold
     
     # 디버깅: 실제 값 출력 (프로덕션에서는 주석 처리)
     # absent_days_count = sum(1 for day in range(1, total_days_in_month + 1) if work_status.get(day) == 'X')  # 결근일 개수 (디버깅용)
@@ -528,38 +765,308 @@ def calendar_view():
     today_replacement_vehicle = None
     today_replacement_vehicle_type = None
     if year == current_date.year and month == current_date.month and not can_start_work:
-        today_info = get_today_work_start_info_cached(employee_id, month_name, current_date.day)
-        rep = get_today_replacement_display(employee_id, month_name, current_date.day, work_start_info=today_info)
+        active_info, active_date, active_month_name, active_day = get_active_work_reference(employee_id, current_date)
+        rep = get_today_replacement_display(employee_id, active_month_name, active_day, work_start_info=active_info)
         if rep:
             today_replacement_vehicle, today_replacement_vehicle_type = rep
     
-    return render_template('calendar.html', 
-                         calendar=cal,
-                         year=year,
-                         month=month,
-                         month_name=month_name,
-                         work_status=work_status,
-                         current_date=current_date_only,
-                         work_data=work_data,
-                         work_days=work_days,
-                         absent_days=absent_days,
-                         total_revenue=total_revenue,
-                         total_fuel_cost=total_fuel_cost,
-                         holiday_days_count=holiday_days_count,
-                         accident_count=accident_count,
-                         prev_year=prev_year,
-                         prev_month=prev_month,
-                         next_year=next_year,
-                         next_month=next_month,
-                         can_end_work=can_end_work,
-                         can_start_work=can_start_work,
-                         today_vehicle=today_vehicle,
-                         today_vehicle_type=today_vehicle_type,
-                         today_replacement_vehicle=today_replacement_vehicle,
-                         today_replacement_vehicle_type=today_replacement_vehicle_type,
-                         show_replacement_button=show_replacement_button,
-                         is_full_attendance=is_full_attendance,
-                         has_unread_notices=has_unread_notices)
+    ctx = {
+        'calendar': cal,
+        'year': year,
+        'month': month,
+        'month_name': month_name,
+        'work_status': work_status,
+        'current_date': current_date_only,
+        'work_data': work_data,
+        'work_days': work_days,
+        'absent_days': absent_days,
+        'total_revenue': total_revenue,
+        'total_fuel_cost': total_fuel_cost,
+        'holiday_days_count': vacation_days,
+        'accident_count': accident_count,
+        'approved_days': approved_days,
+        'prev_year': prev_year,
+        'prev_month': prev_month,
+        'next_year': next_year,
+        'next_month': next_month,
+        'can_end_work': can_end_work,
+        'can_start_work': can_start_work,
+        'today_vehicle': today_vehicle,
+        'today_vehicle_type': today_vehicle_type,
+        'today_replacement_vehicle': today_replacement_vehicle,
+        'today_replacement_vehicle_type': today_replacement_vehicle_type,
+        'show_replacement_button': show_replacement_button,
+        'is_full_attendance': is_full_attendance,
+        'has_unread_notices': has_unread_notices,
+    }
+
+    if include_yearly_stats:
+        yearly = get_main_yearly_stats(employee_id, current_date.date())
+        ctx.update(yearly)
+
+    return ctx
+
+
+@app.route('/calendar')
+@require_login
+def calendar_view():
+    """캘린더 뷰 - 근무일정"""
+    employee_id = session.get('employee_id')
+    current_date = get_kst_now()
+    year_param = request.args.get('year', type=int)
+    month_param = request.args.get('month', type=int)
+    if year_param and month_param:
+        year = year_param
+        month = month_param
+        if month < 1:
+            month = 12
+            year -= 1
+        elif month > 12:
+            month = 1
+            year += 1
+    else:
+        year = current_date.year
+        month = current_date.month
+    ctx = build_calendar_template_context(employee_id, year, month)
+    return render_template('calendar.html', **ctx)
+
+
+@app.route('/main')
+@require_login
+def main_dashboard():
+    """메인 대시보드 (로그인 후 진입 화면)"""
+    employee_id = session.get('employee_id')
+    # 시트 수정 직후 통계를 즉시 맞추려면 /main?fresh=1 (읽기 호출 증가·429 주의)
+    if request.args.get('fresh') == '1':
+        invalidate_main_dashboard_stats_caches(employee_id)
+    cd = get_kst_now()
+    ctx = build_calendar_template_context(employee_id, cd.year, cd.month, include_yearly_stats=True)
+    return render_template('main.html', **ctx)
+
+
+@app.route('/notice')
+@require_login
+def notice_list():
+    """공지사항 PDF 목록."""
+    if request.args.get('fresh') == '1':
+        notice_cache.clear_pattern('notice_list:')
+    listed_ok = False
+    try:
+        notices = list_notice_pdfs()
+        listed_ok = True
+    except HttpError as e:
+        notices = []
+        body = getattr(e, 'content', None) or b''
+        print(
+            'Error list_notice_pdfs HttpError %s: %s'
+            % (
+                getattr(e.resp, 'status', ''),
+                body.decode('utf-8', errors='replace')[:1200],
+            )
+        )
+        import traceback
+
+        traceback.print_exc()
+        if getattr(e.resp, 'status', None) == 404:
+            flash(
+                '공지 폴더를 Drive에서 찾지 못했습니다. '
+                '`NOTICE_DRIVE_FOLDER_ID`(또는 환경 변수)가 해당 [공지사항] 폴더 브라우저 주소의 '
+                '`/folders/` 뒤 ID와 문자 하나까지 동일하게 맞았는지 확인해 주세요. '
+                '(Sheets는 되는데 공지만 안 되면 ID 오타 가능성이 큽니다.)',
+                'error',
+            )
+        else:
+            flash(
+                'Drive에서 공지 목록을 불러오지 못했습니다. credentials·Drive API 활성화·쿼터를 확인해 주세요.',
+                'error',
+            )
+    except Exception as e:
+        notices = []
+        print(f'Error list_notice_pdfs: {e}')
+        import traceback
+
+        traceback.print_exc()
+        flash(
+            'Drive에서 공지 목록을 불러오지 못했습니다. credentials·쿼터·폴더 권한을 확인해 주세요.',
+            'error',
+        )
+
+    # 목록이 비었을 때만 안내 (API 오류로 이미 error 플래시를 띄운 경우는 제외)
+    if not notices and listed_ok:
+        flash(
+            '공지 PDF가 표시되지 않으면 다음을 확인해 주세요. '
+            '① 폴더 ID(NOTICE_DRIVE_FOLDER_ID). '
+            '② 서비스 계정 이메일에 해당 [공지사항] 폴더 편집자 공유. '
+            '③ 파일명 형식: 번호_제목_YYYY-MM-DD.pdf',
+            'info',
+        )
+
+    return render_template('notice.html', notices=notices)
+
+
+@app.route('/notice/<file_id>')
+@require_login
+def notice_view(file_id):
+    """공지사항 상세 (PDF 뷰어)."""
+    try:
+        notice = get_notice_file_meta(file_id)
+    except Exception:
+        notice = None
+    if not notice:
+        flash('공지 파일을 찾을 수 없습니다.', 'error')
+        return redirect(url_for('notice_list'))
+    pdf_token = make_notice_pdf_token(file_id)
+    return render_template(
+        'notice_view.html',
+        notice=notice,
+        pdf_token=pdf_token,
+    )
+
+
+@app.route('/notice/file/<file_id>')
+def notice_file_proxy(file_id):
+    """Google Drive PDF를 스트리밍. iframe용 ?t 토큰 또는 로그인 세션 필요."""
+    if not verify_notice_pdf_token(file_id, request.args.get('t')) and (
+        'employee_id' not in session
+    ):
+        return redirect(url_for('login'))
+    try:
+        notice = get_notice_file_meta(file_id)
+        if not notice:
+            abort(404)
+        svc = get_drive_service()
+        req = svc.files().get_media(fileId=file_id, supportsAllDrives=True)
+        stream = io.BytesIO()
+        downloader = MediaIoBaseDownload(stream, req)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        pdf_bytes = stream.getvalue()
+        raw_fn = (notice.get('file_name') or 'notice.pdf').replace('"', '_')
+        # 헤더는 latin-1 제한으로 filename="..." 는 ASCII 고정 (원본 이름은 RFC 5987 filename* 에만 인코딩).
+        pct_name = quote(raw_fn, safe='')
+        cd = 'inline; filename="notice.pdf"; filename*=UTF-8\'\'%s' % pct_name
+        ln = len(pdf_bytes)
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={
+                'Content-Disposition': cd,
+                'Content-Length': str(ln),
+                'Cache-Control': 'private, max-age=60',
+            },
+        )
+    except Exception:
+        abort(404)
+
+
+@app.route('/leave-request')
+@require_login
+def leave_request():
+    """휴가신청 목록 및 잔여 연차 표시."""
+    employee_id = session.get('employee_id')
+    user_rec = get_user_by_id(employee_id)
+    entitlement = get_user_annual_leave_entitlement(user_rec)
+    used_approved = sum_approved_leave_days_for_employee(employee_id)
+    remaining = max(0, entitlement - used_approved)
+    leave_rows = get_leave_requests_for_display(employee_id)
+    return render_template(
+        'leave_request.html',
+        entitlement=entitlement,
+        remaining_leave_days=remaining,
+        used_approved_days=used_approved,
+        leave_rows=leave_rows,
+    )
+
+
+@app.route('/leave-request/new', methods=['GET', 'POST'])
+@require_login
+def leave_request_new():
+    """휴가신청 작성 폼."""
+    employee_id = session.get('employee_id')
+    name = (session.get('name') or '').strip()
+    current_date = get_kst_now()
+    today_slash = current_date.strftime('%Y/%m/%d')
+    today_iso = current_date.strftime('%Y-%m-%d')
+    user_rec = get_user_by_id(employee_id)
+
+    if request.method == 'POST':
+        start_iso = (request.form.get('start_date') or '').strip()
+        end_iso = (request.form.get('end_date') or '').strip()
+        reason = (request.form.get('reason') or '').strip()
+        if not start_iso or not end_iso:
+            flash('휴가 시작일과 종료일을 선택해주세요.', 'error')
+            return redirect(url_for('leave_request_new'))
+        if not reason:
+            flash('사유를 입력해주세요.', 'error')
+            return redirect(url_for('leave_request_new'))
+        try:
+            start_dt = datetime.strptime(start_iso[:10], '%Y-%m-%d').date()
+            end_dt = datetime.strptime(end_iso[:10], '%Y-%m-%d').date()
+        except ValueError:
+            flash('날짜 형식이 올바르지 않습니다.', 'error')
+            return redirect(url_for('leave_request_new'))
+        if end_dt < start_dt:
+            flash('종료일은 시작일 이후여야 합니다.', 'error')
+            return redirect(url_for('leave_request_new'))
+        duration_days = (end_dt - start_dt).days + 1
+        start_slash = start_dt.strftime('%Y/%m/%d')
+        end_slash = end_dt.strftime('%Y/%m/%d')
+        account_name = (user_rec.get('name') or '').strip() if user_rec else ''
+        if account_name and name and account_name != name:
+            flash('로그인 정보와 계정 이름이 일치하지 않습니다.', 'error')
+            return redirect(url_for('leave_request_new'))
+        display_name = account_name or name
+        if append_leave_request_row(
+            today_slash,
+            employee_id,
+            display_name,
+            start_slash,
+            end_slash,
+            duration_days,
+            reason,
+        ):
+            flash('휴가 신청이 접수되었습니다.', 'success')
+            return redirect(url_for('leave_request'))
+        flash('휴가 신청 저장에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error')
+        return redirect(url_for('leave_request_new'))
+
+    return render_template(
+        'leave_request_form.html',
+        apply_date_display=today_slash,
+        apply_date_iso=today_iso,
+        user_name=(user_rec.get('name') or '').strip() or name,
+        employee_id=employee_id,
+        default_start_iso=today_iso,
+        default_end_iso=today_iso,
+    )
+
+
+@app.route('/leave-request/cancel', methods=['POST'])
+@require_login
+def leave_request_cancel():
+    """대기 상태 휴가신청 1건 취소(행 삭제)."""
+    employee_id = str(session.get('employee_id') or '').strip()
+    session_name = (session.get('name') or '').strip()
+
+    apply_date = (request.form.get('apply_date') or '').strip()
+    start_date = (request.form.get('start_date') or '').strip()
+    end_date = (request.form.get('end_date') or '').strip()
+    row_name = (request.form.get('name') or '').strip()
+
+    if not apply_date or not start_date or not end_date:
+        flash('취소할 휴가 정보가 올바르지 않습니다.', 'error')
+        return redirect(url_for('leave_request'))
+
+    if session_name and row_name and session_name != row_name:
+        flash('본인 신청건만 취소할 수 있습니다.', 'error')
+        return redirect(url_for('leave_request'))
+
+    if delete_pending_leave_request_row(employee_id, row_name or session_name, apply_date, start_date, end_date):
+        flash('휴가 신청이 취소되었습니다.', 'success')
+    else:
+        flash('대기 상태의 신청건을 찾지 못했습니다.', 'error')
+    return redirect(url_for('leave_request'))
 
 
 @app.route('/vehicle-replacement-apply', methods=['GET', 'POST'])
@@ -570,7 +1077,6 @@ def vehicle_replacement_apply():
     driver_name = session.get('name', '') or ''
     current_date = get_kst_now()
     month_name = config.MONTHS[current_date.month - 1]
-    today_day = current_date.day
     
     if request.method == 'POST':
         vehicle_number = (request.form.get('vehicle_number') or '').strip()
@@ -580,7 +1086,8 @@ def vehicle_replacement_apply():
         apply_date_str = current_date.strftime('%Y/%m/%d')
         if update_loaner_vehicle_on_apply(vehicle_number, employee_id, driver_name, apply_date_str):
             report_value = f"{vehicle_number} (대차)"
-            if update_work_cell_note_report(employee_id, month_name, today_day, report_value):
+            active_info, active_date, active_month_name, active_day = get_active_work_reference(employee_id, current_date)
+            if update_work_cell_note_report(employee_id, active_month_name, active_day, report_value):
                 work_data_cache.clear_pattern(f"work_data:{employee_id}:*")
                 work_start_info_cache.clear_pattern(f"work_start_info:{employee_id}:")
                 flash('대차신청이 완료되었습니다.', 'success')
@@ -588,7 +1095,7 @@ def vehicle_replacement_apply():
                 flash('보고사항 반영에 실패했습니다. 관리자에게 문의하세요.', 'error')
         else:
             flash('대차 신청 처리에 실패했습니다. 다시 시도해주세요.', 'error')
-        return redirect(url_for('calendar_view', year=current_date.year, month=current_date.month))
+        return redirect(url_for('main_dashboard'))
     
     vehicles = get_loaner_vehicles()
     return render_template('vehicle_replacement_apply.html',
@@ -624,8 +1131,9 @@ def work_start():
         # 폼 데이터 가져오기
         vehicle_number = request.form.get('vehicle_number', '')  # hidden input에서 가져옴
         work_type = request.form.get('work_type', '')
-        vehicle_condition = request.form.get('vehicle_condition', '')
-        special_notes = request.form.get('special_notes', '')
+        # TODO(restore): 임시 비활성화 - work_start 폼에서 차량상태/보고사항 입력 미사용
+        # vehicle_condition = request.form.get('vehicle_condition', '')
+        # special_notes = request.form.get('special_notes', '')
         
         # 날짜/시간 포맷팅 (현재 시간 포함)
         work_datetime = current_date.strftime('%Y/%m/%d %H:%M:%S')
@@ -635,8 +1143,9 @@ def work_start():
             'vehicle_number': vehicle_number,
             'work_date': work_datetime,
             'work_type': work_type,
-            'vehicle_condition': vehicle_condition,
-            'special_notes': special_notes
+            # TODO(restore): 임시 비활성화 - 메모 항목 전달 중단
+            # 'vehicle_condition': vehicle_condition,
+            # 'special_notes': special_notes
         }
         
         # 근무 상태 업데이트 및 메모 추가 (선택한 차량번호와 근무유형 전달)
@@ -895,12 +1404,12 @@ def work_end_step2():
         user = get_user_by_id(employee_id)
         work_end_datetime = current_date.strftime('%Y/%m/%d %H:%M:%S')
         
-        # 운행시작 정보 조회 (필요 시 하루 전 데이터 사용)
-        work_start_info, start_lookup_date, start_month_name, start_day = get_work_start_info_with_fallback(employee_id, current_date)
+        # GET 단계에서 조회한 운행시작 정보를 재사용하여 중복 API 호출 제거
+        start_lookup_date = lookup_date
+        start_month_name = lookup_month_name
+        start_day = lookup_day
         
         # 운행일 결정: lookup_date 사용 (근무예정일, 즉 Google Sheets에 'O'가 기록된 날짜)
-        # lookup_date는 get_work_start_info_with_fallback에서 반환된 날짜로,
-        # 근무시작 시 selected_date로 설정한 날짜와 동일함
         operation_date = start_lookup_date.strftime('%Y/%m/%d')
         
         # 운행시작일시는 work_start_info에서 가져오기 (근무시간 계산용)
@@ -1056,8 +1565,8 @@ def work_history():
             data = all_data[month]
             months.append(month)
             # 숫자로 변환 (문자열일 수 있음)
-            work_days_val = data.get('근무일수', 0)
-            absent_days_val = data.get('결근일수', 0)
+            work_days_val = _get_sheet_metric(data, '근무일')
+            absent_days_val = _get_sheet_metric(data, '결근일')
             try:
                 work_days.append(int(work_days_val) if work_days_val else 0)
                 absent_days.append(int(absent_days_val) if absent_days_val else 0)
@@ -1065,9 +1574,9 @@ def work_history():
                 work_days.append(0)
                 absent_days.append(0)
             
-            # R(예정일)과 /(휴무일) 개수 계산
+            # R(예정일)과 휴가 개수 계산
             scheduled_count = 0
-            holiday_count = 0
+            holiday_count = _to_int_safe(data.get('휴가', 0))
             for day in range(1, 32):
                 day_str = str(day)
                 if day_str in data:
@@ -1076,17 +1585,15 @@ def work_history():
                     status = status_raw.upper() if status_raw.upper() == 'R' else status_raw
                     if status == 'R':
                         scheduled_count += 1
-                    elif status == '/':
-                        holiday_count += 1
             scheduled_days.append(scheduled_count)
             holiday_days.append(holiday_count)
     
     df = pd.DataFrame({
         '월': months,
-        '근무일수': work_days,
-        '결근일수': absent_days,
+        '근무일': work_days,
+        '결근일': absent_days,
         '예정일수': scheduled_days,
-        '휴무일수': holiday_days
+        '휴가': holiday_days
     })
     
     # 차트 데이터 생성
