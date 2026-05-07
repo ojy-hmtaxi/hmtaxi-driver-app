@@ -18,7 +18,12 @@ NOTICE_DRIVE_FOLDER_ID = (
 
 # Google API 인증 정보
 # 환경 변수 GOOGLE_CREDENTIALS가 있으면 사용, 없으면 파일에서 읽기
-GOOGLE_CREDENTIALS_JSON = os.environ.get('GOOGLE_CREDENTIALS')
+# Cloudtype 등 패널에서는 소문자 키 이름으로 넣는 경우도 있어 병렬 지원
+GOOGLE_CREDENTIALS_JSON = (
+    os.environ.get('GOOGLE_CREDENTIALS')
+    or os.environ.get('GOOGLE_CREDENTIALS_JSON')
+    or os.environ.get('google_credentials')
+)
 CREDENTIALS_FILE = "credentials.json"
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 
