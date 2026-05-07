@@ -14,6 +14,9 @@ const LoadingManager = {
     progressStartMs: 0,
     /** 0→100% 카운트 표시에 걸리는 시간(ms). 실제 전송 진행률은 아님 — hide()에서 100% 마무리 */
     progressDurationMs: 3000,
+    /** 페이지 이탈 전 오버레이·퍼센트 애니메이션을 이 시간(ms) 이상 유지(JS 타이머가 돌 시간 확보) */
+    minimumOverlayVisibleMs: 1000,
+    _overlayShownPerfMs: 0,
     
     /**
      * 초기화
@@ -38,6 +41,9 @@ const LoadingManager = {
         
         this.isActive = true;
         this.overlay.style.display = 'flex';
+        this._overlayShownPerfMs = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
         
         // 페이지 전환 플래그 설정 (새 페이지에서 슬라이드 인 애니메이션을 위해)
         sessionStorage.setItem('pageTransition', 'true');
@@ -254,7 +260,23 @@ const LoadingManager = {
                 }
             });
         });
-    }
+    },
+
+    /**
+     * show() 후 최소 `minimumOverlayVisibleMs` 동안 같은 문서에 머문 뒤 콜백 실행 (전환 전 퍼센트가 돌도록).
+     */
+    runAfterMinimumOverlayVisible(fn) {
+        if (typeof fn !== 'function') return;
+        const nowMs = () => ((typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now());
+        let start = this._overlayShownPerfMs;
+        if (!start || !this.isActive) start = nowMs();
+        const minMs = typeof this.minimumOverlayVisibleMs === 'number' ? this.minimumOverlayVisibleMs : 1000;
+        const elapsed = nowMs() - start;
+        const wait = Math.max(0, minMs - elapsed);
+        setTimeout(fn, wait);
+    },
 };
 
 /**
@@ -454,10 +476,12 @@ document.addEventListener('DOMContentLoaded', function() {
             LoadingManager.init();
         }
         LoadingManager.show();
-        // 스피너가 화면에 그려진 다음 제출 (한 프레임 대기)
+        // 최소 유지 시간 뒤 제출 → 그동안 같은 문서에서 setInterval 진행 표시 가능
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
-                form.submit();
+                LoadingManager.runAfterMinimumOverlayVisible(function() {
+                    form.submit();
+                });
             });
         });
     }, true); // capture phase에서 실행하여 더 빠르게 처리
@@ -494,10 +518,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     LoadingManager.init();
                 }
                 LoadingManager.show();
-                // 스피너가 화면에 그려진 다음 이동 (한 프레임 대기)
                 requestAnimationFrame(() => {
                     requestAnimationFrame(() => {
-                        window.location.href = link.href;
+                        LoadingManager.runAfterMinimumOverlayVisible(() => {
+                            window.location.href = link.href;
+                        });
                     });
                 });
             }
