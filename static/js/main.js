@@ -12,15 +12,16 @@ const LoadingManager = {
     progressTimer: null,
     progressTickMs: 50,
     progressStartMs: 0,
-    /** 0→100% 카운트 표시에 걸리는 시간(ms). 실제 전송 진행률은 아님 — hide()에서 100% 마무리 */
-    progressDurationMs: 3000,
-    /** 페이지 이탈 전 오버레이·퍼센트 애니메이션을 이 시간(ms) 이상 유지(JS 타이머가 돌 시간 확보) */
+    /** 총 `progressDurationMs` 동안 표시되는 느낌용 카운트(0→85% 후 85→100%). 실제 전송 진행률 아님 — hide()에서 100% 마무리 */
+    progressDurationMs: 2000,
+    /** 첫 구간 종료 시각(ms, progressStart 기준) — 이까지 0%→progressPhase1TargetPct% */
+    progressPhase1Ms: 1000,
+    progressPhase1TargetPct: 85,
+    /** 페이지 이탈 전 오버레이·퍼센트를 이 시간(ms) 이상 같은 문서에 유지한 뒤 submit/이동(runAfterMinimumOverlayVisible) */
     minimumOverlayVisibleMs: 1000,
     _overlayShownPerfMs: 0,
     /** setInterval 미실행(WebKit 등) 완충용, 최소 노출 시간 동안 고정 간격으로 퍼센트 강제 갱신 */
     _burstTimeouts: [],
-    /** WAAPI 타임라인(getComputedTiming.progress) 기반 보조 — 순수 시간만 쓸 때 타이머가 막히는 환경용 */
-    _progressDrivingAnim: null,
 
     /**
      * 초기화
@@ -88,7 +89,7 @@ const LoadingManager = {
         }, 300);
     },
 
-    /** 인터벌·버스트 타임아웃·WAAPI 드라이버 정리 */
+    /** 인터벌·버스트 타임아웃 정리 */
     _stopProgressDrivers() {
         if (this.progressTimer !== null) {
             clearInterval(this.progressTimer);
@@ -98,17 +99,26 @@ const LoadingManager = {
             this._burstTimeouts.forEach((t) => clearTimeout(t));
             this._burstTimeouts = [];
         }
-        if (this._progressDrivingAnim) {
-            try {
-                this._progressDrivingAnim.cancel();
-            } catch (ignore) { /* noop */ }
-            this._progressDrivingAnim = null;
+    },
+
+    /** 경과 ms에 따른 느낌용 퍼센트 정수 — 1구간(progressPhase1Ms)에 목표까지, 나머지 시간에 100% */
+    _progressPercentFromElapsed(elapsedMs) {
+        const e = Math.max(0, elapsedMs);
+        const total = this.progressDurationMs;
+        const p1 = this.progressPhase1Ms;
+        const v1 = this.progressPhase1TargetPct;
+        if (e >= total) return 100;
+        if (e <= p1) {
+            return Math.min(v1, Math.floor((e / p1) * v1));
         }
+        const e2 = e - p1;
+        const p2 = total - p1;
+        return Math.min(100, v1 + Math.floor((e2 / p2) * (100 - v1)));
     },
     
     /**
-     * 로딩 스피너 위 퍼센트 0→100 (느낌용).
-     * 모바일 WebKit에서는 setInterval이 합치/지연되기도 해 WAAPI progress + 명시적 setTimeout 버스트를 병행.
+     * 로딩 스피너 위 퍼센트(느낌용): 첫 progressPhase1Ms에 0→progressPhase1TargetPct%, 이후 나머지 시간에 목표→100%.
+     * 모바일 WebKit에서는 setInterval이 묶일 수 있어 최소 노출 구간에는 setTimeout 버스트를 병행.
      */
     startProgressPercent() {
         this.stopProgressPercent(false);
@@ -123,24 +133,10 @@ const LoadingManager = {
             ? performance.now()
             : Date.now());
 
-        const getLinearProgress = () => {
-            const timeP = Math.min(1, Math.max(0, (nowMs() - this.progressStartMs) / this.progressDurationMs));
-            let p = timeP;
-            const anim = this._progressDrivingAnim;
-            if (anim && anim.effect && typeof anim.effect.getComputedTiming === 'function') {
-                try {
-                    const gp = anim.effect.getComputedTiming().progress;
-                    if (gp != null && !Number.isNaN(gp)) {
-                        p = Math.max(p, Math.min(1, Math.max(0, gp)));
-                    }
-                } catch (ignore) { /* timeP only */ }
-            }
-            return p;
-        };
-
         const applyPct = () => {
             if (!this.isActive || !this.progressEl) return false;
-            const pct = Math.min(100, Math.floor(getLinearProgress() * 100));
+            const elapsed = nowMs() - this.progressStartMs;
+            const pct = Math.min(100, this._progressPercentFromElapsed(elapsed));
             const el = this.progressEl;
             el.textContent = pct + '%';
             void el.offsetHeight;
@@ -150,21 +146,6 @@ const LoadingManager = {
             }
             return pct >= 100;
         };
-
-        try {
-            if (this.overlay && typeof this.overlay.animate === 'function') {
-                this._progressDrivingAnim = this.overlay.animate(
-                    [{ filter: 'brightness(1)' }, { filter: 'brightness(1.02)' }],
-                    {
-                        duration: this.progressDurationMs,
-                        easing: 'linear',
-                        fill: 'forwards',
-                    },
-                );
-            }
-        } catch (ignore) {
-            this._progressDrivingAnim = null;
-        }
 
         applyPct();
 
