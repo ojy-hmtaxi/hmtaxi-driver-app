@@ -12,11 +12,11 @@ const LoadingManager = {
     progressTimer: null,
     progressTickMs: 50,
     progressStartMs: 0,
-    /** 총 `progressDurationMs` 동안 표시되는 느낌용 카운트(0→85% 후 85→100%). 실제 전송 진행률 아님 — hide()에서 100% 마무리 */
+    /** 총 `progressDurationMs` 동안 표시되는 느낌용 카운트(0→99% 후 99→100%). 실제 전송 진행률 아님 — hide()에서 100% 마무리 */
     progressDurationMs: 2000,
     /** 첫 구간 종료 시각(ms, progressStart 기준) — 이까지 0%→progressPhase1TargetPct% */
     progressPhase1Ms: 1000,
-    progressPhase1TargetPct: 85,
+    progressPhase1TargetPct: 99,
     /** 페이지 이탈 전 오버레이·퍼센트를 이 시간(ms) 이상 같은 문서에 유지한 뒤 submit/이동(runAfterMinimumOverlayVisible) */
     minimumOverlayVisibleMs: 1000,
     _overlayShownPerfMs: 0,
